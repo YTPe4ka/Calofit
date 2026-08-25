@@ -22,7 +22,7 @@ export class RegisterDto {
   })
   @IsString()
   @MinLength(8, { message: "Parol kamida 8 ta belgi bo'lishi kerak" })
-  @MaxLength(72, { message: "Parol 72 ta belgidan oshmasligi kerak" })
+  @MaxLength(72, { message: 'Parol 72 ta belgidan oshmasligi kerak' })
   @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
     message: "Parol: katta harf, kichik harf va raqam bo'lishi shart",
   })

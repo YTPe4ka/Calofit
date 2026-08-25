@@ -62,13 +62,17 @@ export class MealController {
     schema: {
       type: 'object',
       properties: {
-        image: { type: 'string', format: 'binary', description: 'JPEG/PNG/WEBP, max 10MB' },
+        image: {
+          type: 'string',
+          format: 'binary',
+          description: 'JPEG/PNG/WEBP, max 10MB',
+        },
       },
       required: ['image'],
     },
   })
   @ApiResponse({ status: 201, description: 'Tahlil natijasi' })
-  @ApiResponse({ status: 403, description: 'Profil to\'ldirilmagan' })
+  @ApiResponse({ status: 403, description: "Profil to'ldirilmagan" })
   @ApiResponse({ status: 413, description: 'Fayl 10MB dan katta' })
   @ApiResponse({ status: 422, description: 'Rasmda ovqat aniqlanmadi' })
   @ApiResponse({ status: 503, description: 'AI xizmat ishlamayapti' })
@@ -88,16 +92,18 @@ export class MealController {
   @ApiResponse({ status: 201, description: 'Meal log saqlandi' })
   @ApiResponse({ status: 404, description: 'Tahlil topilmadi' })
   @ApiResponse({ status: 409, description: 'Allaqachon tasdiqlangan' })
-  confirm(
-    @CurrentUser('id') userId: string,
-    @Body() dto: ConfirmMealDto,
-  ) {
+  confirm(@CurrentUser('id') userId: string, @Body() dto: ConfirmMealDto) {
     return this.mealService.confirm(userId, dto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Kunlik ovqat loglari' })
-  @ApiQuery({ name: 'date', required: false, example: '2026-07-08', description: 'YYYY-MM-DD' })
+  @ApiQuery({
+    name: 'date',
+    required: false,
+    example: '2026-07-08',
+    description: 'YYYY-MM-DD',
+  })
   @ApiResponse({ status: 200, description: 'Kunlik loglar va summary' })
   getDailyLogs(
     @CurrentUser('id') userId: string,
@@ -108,14 +114,11 @@ export class MealController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Meal logni o\'chirish' })
-  @ApiResponse({ status: 204, description: 'Muvaffaqiyatli o\'chirildi' })
+  @ApiOperation({ summary: "Meal logni o'chirish" })
+  @ApiResponse({ status: 204, description: "Muvaffaqiyatli o'chirildi" })
   @ApiResponse({ status: 404, description: 'Log topilmadi' })
-  @ApiResponse({ status: 403, description: 'Ruxsat yo\'q' })
-  deleteLog(
-    @CurrentUser('id') userId: string,
-    @Param('id') logId: string,
-  ) {
+  @ApiResponse({ status: 403, description: "Ruxsat yo'q" })
+  deleteLog(@CurrentUser('id') userId: string, @Param('id') logId: string) {
     return this.mealService.deleteLog(userId, logId);
   }
 }

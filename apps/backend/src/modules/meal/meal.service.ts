@@ -33,7 +33,11 @@ export class MealService {
     }
 
     // 2. AI tahlil
-    const nutrition = await this.aiService.analyzeFood(file.buffer, file.mimetype, locale);
+    const nutrition = await this.aiService.analyzeFood(
+      file.buffer,
+      file.mimetype,
+      locale,
+    );
 
     // 3. MealAnalysis DB ga saqlash
     const analysis = await this.prisma.mealAnalysis.create({
@@ -66,7 +70,7 @@ export class MealService {
       nutrition,
       warning:
         nutrition.confidenceScore < 0.6
-          ? "AI natijasi ishonchli emas. Iltimos, qiymatlarni tekshiring."
+          ? 'AI natijasi ishonchli emas. Iltimos, qiymatlarni tekshiring.'
           : null,
     };
   }
@@ -76,14 +80,14 @@ export class MealService {
     // 1. Analysis topish
     const analysis = await this.prisma.mealAnalysis.findUnique({
       where: { id: dto.analysisId },
-      select: { 
-        id: true, 
-        userId: true, 
-        isConfirmed: true, 
+      select: {
+        id: true,
+        userId: true,
+        isConfirmed: true,
         storageKey: true,
         ingredients: true,
         healthAdvice: true,
-        portionBreakdown: true
+        portionBreakdown: true,
       },
     });
 
@@ -98,7 +102,7 @@ export class MealService {
     if (analysis.userId !== userId) {
       throw new ForbiddenException({
         error: 'FORBIDDEN',
-        message: 'Ruxsat yo\'q',
+        message: "Ruxsat yo'q",
       });
     }
 
@@ -111,7 +115,9 @@ export class MealService {
     }
 
     // 4. Signed URL for log
-    const imageUrl = await this.storageService.getSignedUrl(analysis.storageKey);
+    const imageUrl = await this.storageService.getSignedUrl(
+      analysis.storageKey,
+    );
 
     // 5. Transaction: analysis update + meal log create
     const mealLog = await this.prisma.$transaction(async (tx) => {
@@ -172,7 +178,13 @@ export class MealService {
         totalCarbs: acc.totalCarbs + Number(log.carbs),
         logCount: acc.logCount + 1,
       }),
-      { totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0, logCount: 0 },
+      {
+        totalCalories: 0,
+        totalProtein: 0,
+        totalFat: 0,
+        totalCarbs: 0,
+        logCount: 0,
+      },
     );
 
     const dailyCalorieGoal = profile?.dailyCalorieGoal ?? 2000;
@@ -184,8 +196,12 @@ export class MealService {
       totalCarbs: Math.round(rawSummary.totalCarbs * 100) / 100,
       logCount: rawSummary.logCount,
       dailyCalorieGoal,
-      remainingCalories: Math.max(0, dailyCalorieGoal - rawSummary.totalCalories),
-      diffCalories: Math.round((rawSummary.totalCalories - dailyCalorieGoal) * 100) / 100,
+      remainingCalories: Math.max(
+        0,
+        dailyCalorieGoal - rawSummary.totalCalories,
+      ),
+      diffCalories:
+        Math.round((rawSummary.totalCalories - dailyCalorieGoal) * 100) / 100,
     };
 
     return { date: dateStr, summary, logs };
@@ -208,7 +224,7 @@ export class MealService {
     if (log.userId !== userId) {
       throw new ForbiddenException({
         error: 'FORBIDDEN',
-        message: 'Ruxsat yo\'q',
+        message: "Ruxsat yo'q",
       });
     }
 

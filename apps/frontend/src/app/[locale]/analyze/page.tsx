@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 import { useRouter } from '@/i18n/routing';
 import { Upload, Camera, AlertTriangle, Check, Loader2, ArrowLeft, Sparkles } from 'lucide-react';
 import { useParams } from 'next/navigation';
+import { useAuth } from '@/providers/auth-provider';
+import { SubscriptionPaywallModal } from '@/components/SubscriptionPaywallModal';
 
 interface AnalysisResult {
   analysisId: string;
@@ -41,6 +43,8 @@ export default function AnalyzePage() {
   const locale = (params?.locale as string) || 'uz';
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
+  const { hasAccess } = useAuth();
+  const [paywallOpen, setPaywallOpen] = useState(false);
 
   const [preview, setPreview] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -163,6 +167,11 @@ export default function AnalyzePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!hasAccess) {
+      setPaywallOpen(true);
+      return;
+    }
+
     // Preview
     const reader = new FileReader();
     reader.onload = (ev) => setPreview(ev.target?.result as string);
@@ -180,6 +189,11 @@ export default function AnalyzePage() {
 
   return (
     <main className="min-h-screen pb-12 bg-transparent">
+      <SubscriptionPaywallModal
+        isOpen={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+      />
+
       {/* Header */}
       <header className="max-w-5xl mx-auto px-6 pt-6 pb-4 flex items-center justify-between">
         <button

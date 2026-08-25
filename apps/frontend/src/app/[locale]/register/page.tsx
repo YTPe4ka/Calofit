@@ -25,7 +25,7 @@ export default function RegisterPage() {
   const { theme, toggleTheme } = useTheme();
   const [langOpen, setLangOpen] = useState(false);
   
-  const { register, user } = useAuth();
+  const { register, setUser, user } = useAuth();
   
   // Instant direct redirect if session exists in localStorage to prevent loading flash
   useEffect(() => {
@@ -256,6 +256,60 @@ export default function RegisterPage() {
               className="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 shadow-lg shadow-green-500/25 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98] cursor-pointer"
             >
               {isLoading ? t('signing_up') : t('register')}
+            </button>
+
+            {/* Divider */}
+            <div className="relative flex py-1 items-center">
+              <div className="flex-grow border-t border-gray-200/50 dark:border-slate-800/80"></div>
+              <span className="flex-shrink mx-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                {locale === 'ru' ? 'или' : locale === 'en' ? 'or' : 'yoki'}
+              </span>
+              <div className="flex-grow border-t border-gray-200/50 dark:border-slate-800/80"></div>
+            </div>
+
+            {/* Telegram One-Click Register Button */}
+            <button
+              type="button"
+              onClick={async () => {
+                setIsLoading(true);
+                try {
+                  const tg = (window as any).Telegram?.WebApp;
+                  try { tg?.ready(); tg?.expand(); } catch {}
+
+                  const initData = tg?.initData || '';
+                  const telegramUser = tg?.initDataUnsafe?.user;
+                  let guestId = localStorage.getItem('tg_guest_id');
+                  if (!guestId) {
+                    guestId = 'guest_' + Math.random().toString(36).substring(2, 11);
+                    localStorage.setItem('tg_guest_id', guestId);
+                  }
+
+                  const { data } = await api.post('/auth/telegram/login', { initData, telegramUser, guestId });
+                  if (data.accessToken) localStorage.setItem('accessToken', data.accessToken);
+                  if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+                  if (data.user) {
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    setUser(data.user);
+                  }
+                  toast.success(locale === 'ru' ? 'Регистрация успешна!' : 'Muvaffaqiyatli ro‘yxatdan o‘tildi!');
+                  if (data.user?.hasProfile) {
+                    window.location.href = `/${locale}/dashboard`;
+                  } else {
+                    window.location.href = `/${locale}/profile`;
+                  }
+                } catch (err: any) {
+                  toast.error(err.response?.data?.message || 'Telegram auth failed');
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              disabled={isLoading}
+              className="w-full py-3 rounded-xl font-bold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/20 transition-all duration-200 flex items-center justify-center gap-2.5 active:scale-[0.98] cursor-pointer disabled:opacity-50"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+              </svg>
+              {locale === 'ru' ? 'Регистрация через Telegram в 1 клик' : locale === 'en' ? 'Sign up with Telegram (1-Click)' : 'Telegram orqali 1-bosishda ro‘yxatdan o‘tish'}
             </button>
 
             <p className="text-center text-sm text-gray-500 dark:text-slate-400">

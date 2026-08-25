@@ -1,10 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Patch,
-  Post,
-} from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -23,8 +17,8 @@ export class ProfileController {
   constructor(private profileService: ProfileService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Profilni ko\'rish' })
-  @ApiResponse({ status: 200, description: 'Profil ma\'lumotlari' })
+  @ApiOperation({ summary: "Profilni ko'rish" })
+  @ApiResponse({ status: 200, description: "Profil ma'lumotlari" })
   @ApiResponse({ status: 404, description: 'Profil topilmadi' })
   getProfile(@CurrentUser('id') userId: string) {
     return this.profileService.findByUserId(userId);

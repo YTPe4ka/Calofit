@@ -1,11 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { StorageProvider, StorageUploadResult } from './interfaces/storage-provider.interface';
+import {
+  StorageProvider,
+  StorageUploadResult,
+} from './interfaces/storage-provider.interface';
 
 @Injectable()
 export class StorageService {
   constructor(@Inject('STORAGE_PROVIDER') private provider: StorageProvider) {}
 
-  upload(buffer: Buffer, mimeType: string, userId: string): Promise<StorageUploadResult> {
+  upload(
+    buffer: Buffer,
+    mimeType: string,
+    userId: string,
+  ): Promise<StorageUploadResult> {
     return this.provider.upload(buffer, mimeType, userId);
   }
 

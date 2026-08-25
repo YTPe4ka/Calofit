@@ -30,7 +30,7 @@ export class ProfileService {
     if (new Date(dto.dateOfBirth) > new Date()) {
       throw new BadRequestException({
         error: 'BAD_REQUEST',
-        message: 'Tug\'ilgan sana kelajakda bo\'lishi mumkin emas',
+        message: "Tug'ilgan sana kelajakda bo'lishi mumkin emas",
       });
     }
 
@@ -80,7 +80,7 @@ export class ProfileService {
     if (dto.dateOfBirth && new Date(dto.dateOfBirth) > new Date()) {
       throw new BadRequestException({
         error: 'BAD_REQUEST',
-        message: 'Tug\'ilgan sana kelajakda bo\'lishi mumkin emas',
+        message: "Tug'ilgan sana kelajakda bo'lishi mumkin emas",
       });
     }
 
@@ -90,10 +90,10 @@ export class ProfileService {
       dateOfBirth: dto.dateOfBirth
         ? dto.dateOfBirth
         : existing.dateOfBirth.toISOString(),
-      gender: (dto.gender ?? existing.gender) as Gender,
+      gender: dto.gender ?? existing.gender,
       heightCm: dto.heightCm ?? existing.heightCm,
       weightKg: Number(dto.weightKg ?? existing.weightKg),
-      goal: (dto.goal ?? existing.goal) as Goal,
+      goal: dto.goal ?? existing.goal,
     };
 
     const dailyCalorieGoal = this.calculateDailyCalorieGoal(merged);

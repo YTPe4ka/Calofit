@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -17,7 +22,7 @@ export class ProfileGuard implements CanActivate {
     if (!profile) {
       throw new ForbiddenException({
         error: 'PROFILE_REQUIRED',
-        message: 'Iltimos, avval profilingizni to\'ldiring',
+        message: "Iltimos, avval profilingizni to'ldiring",
       });
     }
 

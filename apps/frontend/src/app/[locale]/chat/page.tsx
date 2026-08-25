@@ -7,6 +7,9 @@ import { useRouter, usePathname } from '@/i18n/routing';
 import { ArrowLeft, Send, Sparkles, User, Bot, Loader2, Trash2, ArrowRight, Sun, Moon, Globe, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from '@/providers/theme-provider';
+import { useAuth } from '@/providers/auth-provider';
+import { TrialBanner } from '@/components/TrialBanner';
+import { SubscriptionPaywallModal } from '@/components/SubscriptionPaywallModal';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -102,8 +105,16 @@ export default function ChatPage({ params }: { params: { locale: string } }) {
     return () => clearTimeout(timer);
   }, [messages, isLoading]);
 
+  const { hasAccess } = useAuth();
+  const [paywallOpen, setPaywallOpen] = useState(false);
+
   const handleSend = async (textToSend: string) => {
     if (!textToSend.trim() || isLoading) return;
+
+    if (!hasAccess) {
+      setPaywallOpen(true);
+      return;
+    }
 
     const userMessage = textToSend.trim();
     setInput('');
@@ -165,6 +176,11 @@ export default function ChatPage({ params }: { params: { locale: string } }) {
 
   return (
     <main className="h-screen w-screen flex bg-slate-50 dark:bg-[#0b0f19] overflow-hidden font-sans relative">
+      <SubscriptionPaywallModal
+        isOpen={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+      />
+
       {/* Decorative Blur Blobs */}
       <div className="absolute top-[-10%] left-[-15%] w-[45vw] h-[45vw] rounded-full bg-emerald-300/20 dark:bg-emerald-500/10 blur-[130px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-15%] w-[40vw] h-[40vw] rounded-full bg-green-200/20 dark:bg-green-500/5 blur-[110px] pointer-events-none" />

@@ -12,5 +12,9 @@ export interface FoodAnalysisResult {
 }
 
 export abstract class AIProvider {
-  abstract analyzeFood(buffer: Buffer, mimeType: string, locale?: string): Promise<FoodAnalysisResult>;
+  abstract analyzeFood(
+    buffer: Buffer,
+    mimeType: string,
+    locale?: string,
+  ): Promise<FoodAnalysisResult>;
 }

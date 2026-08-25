@@ -95,7 +95,10 @@ export class GeminiProvider extends AIProvider {
 
       const validated = FoodAnalysisSchema.safeParse(parsed);
       if (!validated.success) {
-        this.logger.error('Gemini Zod validation failed', validated.error.message);
+        this.logger.error(
+          'Gemini Zod validation failed',
+          validated.error.message,
+        );
         throw new Error('AI_INVALID_RESPONSE');
       }
 
@@ -116,7 +119,10 @@ export class GeminiProvider extends AIProvider {
         portionBreakdown: validated.data.portion_breakdown || null,
       };
     } catch (err: any) {
-      if (err.message === 'NOT_FOOD_IMAGE' || err.message === 'AI_INVALID_RESPONSE') {
+      if (
+        err.message === 'NOT_FOOD_IMAGE' ||
+        err.message === 'AI_INVALID_RESPONSE'
+      ) {
         throw err;
       }
       this.logger.error(`Gemini API error: ${err?.message || err}`);

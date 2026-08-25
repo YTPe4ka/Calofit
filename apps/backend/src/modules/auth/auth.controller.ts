@@ -27,9 +27,9 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
-  path: '/api/v1/auth',
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  sameSite: 'none' as const,
+  path: '/',
+  maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days
 };
 
 @ApiTags('auth')
@@ -41,7 +41,7 @@ export class AuthController {
   @Public()
   @Throttle({ default: { ttl: 15 * 60 * 1000, limit: 100 } })
   @ApiOperation({ summary: "Ro'yxatdan o'tish" })
-  @ApiResponse({ status: 201, description: 'Muvaffaqiyatli ro\'yxatdan o\'tish' })
+  @ApiResponse({ status: 201, description: "Muvaffaqiyatli ro'yxatdan o'tish" })
   @ApiResponse({ status: 409, description: 'Email allaqachon mavjud' })
   async register(
     @Body() dto: RegisterDto,
@@ -51,7 +51,11 @@ export class AuthController {
     if (result.refreshToken) {
       res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
     }
-    return { accessToken: result.accessToken, user: result.user };
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      user: result.user,
+    };
   }
 
   @Post('login')
@@ -66,8 +70,14 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.login(dto);
-    res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
-    return { accessToken: result.accessToken, user: result.user };
+    if (result.refreshToken) {
+      res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
+    }
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      user: result.user,
+    };
   }
 
   @Get('verify-email')
@@ -85,9 +95,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Tasdiqlash xatini qayta yuborish' })
   @ApiResponse({ status: 200, description: 'Xat yuborildi' })
-  async resendVerification(
-    @Body() body: { email: string; locale?: string },
-  ) {
+  async resendVerification(@Body() body: { email: string; locale?: string }) {
     return this.authService.resendVerification(body.email, body.locale || 'uz');
   }
 
@@ -100,14 +108,17 @@ export class AuthController {
     @Body() body: { code: string; redirectUri: string },
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.googleLogin(body.code, body.redirectUri);
-    res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
+    const result = await this.authService.googleLogin(
+      body.code,
+      body.redirectUri,
+    );
+    if (result.refreshToken) {
+      res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
+    }
     return {
       accessToken: result.accessToken,
-      user: {
-        email: result.email,
-        hasProfile: result.hasProfile,
-      },
+      refreshToken: result.refreshToken,
+      user: result.user,
     };
   }
 
@@ -125,16 +136,22 @@ export class AuthController {
       body.telegramUser,
       body.guestId,
     );
-    res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
+    if (result.refreshToken) {
+      res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
+    }
     return {
       accessToken: result.accessToken,
-      user: {
-        id: result.user.id,
-        email: result.user.email,
-        name: result.user.name,
-        hasProfile: result.user.hasProfile,
-      },
+      refreshToken: result.refreshToken,
+      user: result.user,
     };
+  }
+
+  @Get('me')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Joriy foydalanuvchi ma’lumotlari va obuna holati' })
+  @ApiResponse({ status: 200, description: 'Foydalanuvchi ma’lumotlari' })
+  async getMe(@CurrentUser('id') userId: string) {
+    return this.authService.getMe(userId);
   }
 
   @Post('refresh')
@@ -145,12 +162,23 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Refresh token yaroqsiz' })
   async refresh(
     @Req() req: Request,
+    @Body() body: { refreshToken?: string },
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = req.cookies?.['refreshToken'];
+    const refreshToken =
+      body?.refreshToken ||
+      (req.headers['x-refresh-token'] as string) ||
+      req.cookies?.['refreshToken'];
+
     const result = await this.authService.refresh(refreshToken);
-    res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
-    return { accessToken: result.accessToken };
+    if (result.refreshToken) {
+      res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
+    }
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      user: result.user,
+    };
   }
 
   @Post('logout')
@@ -161,10 +189,16 @@ export class AuthController {
   async logout(
     @CurrentUser('id') userId: string,
     @Req() req: Request,
+    @Body() body: { refreshToken?: string },
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = req.cookies?.['refreshToken'];
+    const refreshToken =
+      body?.refreshToken ||
+      (req.headers['x-refresh-token'] as string) ||
+      req.cookies?.['refreshToken'];
+
     await this.authService.logout(userId, refreshToken);
-    res.clearCookie('refreshToken', { path: '/api/v1/auth' });
+    res.clearCookie('refreshToken', { path: '/' });
   }
 }
+

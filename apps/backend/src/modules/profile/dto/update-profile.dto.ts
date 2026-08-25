@@ -19,7 +19,10 @@ export class UpdateProfileDto {
   @MaxLength(100)
   name?: string;
 
-  @ApiPropertyOptional({ example: '1998-05-15', description: 'ISO 8601 sana formati' })
+  @ApiPropertyOptional({
+    example: '1998-05-15',
+    description: 'ISO 8601 sana formati',
+  })
   @IsOptional()
   @IsDateString({}, { message: "Sana noto'g'ri formatda" })
   dateOfBirth?: string;
@@ -46,7 +49,7 @@ export class UpdateProfileDto {
   @ApiPropertyOptional({ enum: Goal, example: Goal.LOSE_WEIGHT })
   @IsOptional()
   @IsEnum(Goal, {
-    message: 'Maqsad: LOSE_WEIGHT, MAINTAIN yoki GAIN_WEIGHT bo\'lishi kerak',
+    message: "Maqsad: LOSE_WEIGHT, MAINTAIN yoki GAIN_WEIGHT bo'lishi kerak",
   })
   goal?: Goal;
 

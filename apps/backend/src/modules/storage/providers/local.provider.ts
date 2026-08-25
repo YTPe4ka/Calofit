@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { StorageProvider, StorageUploadResult } from '../interfaces/storage-provider.interface';
+import {
+  StorageProvider,
+  StorageUploadResult,
+} from '../interfaces/storage-provider.interface';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -13,13 +16,29 @@ export class LocalStorageProvider extends StorageProvider {
   constructor(private config: ConfigService) {
     super();
     // Resolve frontend public uploads directory
-    this.uploadDir = path.resolve(__dirname, '..', '..', '..', '..', '..', 'frontend', 'public', 'uploads');
-    
+    this.uploadDir = path.resolve(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      '..',
+      'frontend',
+      'public',
+      'uploads',
+    );
+
     // Fallback base url (frontend dev server)
-    const corsOrigins = this.config.get<string>('CORS_ORIGINS', 'http://localhost:3001');
+    const corsOrigins = this.config.get<string>(
+      'CORS_ORIGINS',
+      'http://localhost:3001',
+    );
     this.baseUrl = corsOrigins.split(',')[0];
 
-    const storageProvider = this.config.get<string>('STORAGE_PROVIDER', 'supabase');
+    const storageProvider = this.config.get<string>(
+      'STORAGE_PROVIDER',
+      'supabase',
+    );
     if (storageProvider === 'local') {
       try {
         if (!fs.existsSync(this.uploadDir)) {
@@ -32,7 +51,11 @@ export class LocalStorageProvider extends StorageProvider {
     }
   }
 
-  async upload(buffer: Buffer, mimeType: string, userId: string): Promise<StorageUploadResult> {
+  async upload(
+    buffer: Buffer,
+    mimeType: string,
+    userId: string,
+  ): Promise<StorageUploadResult> {
     const ext = mimeType.split('/')[1] || 'jpg';
     const filename = `${userId}-${Date.now()}-${Math.floor(Math.random() * 10000)}.${ext}`;
     const filePath = path.join(this.uploadDir, filename);

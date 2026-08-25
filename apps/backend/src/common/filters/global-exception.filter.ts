@@ -29,13 +29,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         error = exceptionResponse.error ?? exception.name;
         message = Array.isArray(exceptionResponse.message)
           ? exceptionResponse.message[0]
-          : exceptionResponse.message ?? message;
+          : (exceptionResponse.message ?? message);
       } else {
         message = exceptionResponse;
         error = exception.name;
       }
     } else if (exception instanceof Error) {
-      this.logger.error(`Unhandled error: ${exception.message}`, exception.stack);
+      this.logger.error(
+        `Unhandled error: ${exception.message}`,
+        exception.stack,
+      );
     }
 
     response.status(statusCode).json({

@@ -40,7 +40,7 @@ export class CreateProfileDto {
 
   @ApiProperty({ enum: Goal, example: Goal.LOSE_WEIGHT })
   @IsEnum(Goal, {
-    message: 'Maqsad: LOSE_WEIGHT, MAINTAIN yoki GAIN_WEIGHT bo\'lishi kerak',
+    message: "Maqsad: LOSE_WEIGHT, MAINTAIN yoki GAIN_WEIGHT bo'lishi kerak",
   })
   goal: Goal;
 

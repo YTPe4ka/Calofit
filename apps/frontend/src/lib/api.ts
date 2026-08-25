@@ -6,13 +6,13 @@ const baseURL = cleanApiUrl.endsWith('/api/v1') ? cleanApiUrl : `${cleanApiUrl}/
 
 export const api = axios.create({
   baseURL,
-  withCredentials: true, // HttpOnly cookie uchun
+  withCredentials: true, // For HttpOnly cookie support
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// ─── Request Interceptor: Access Token qo'shish ────────
+// ─── Request Interceptor: Attach Access Token & Admin Key ────────
 api.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {
@@ -20,13 +20,23 @@ api.interceptors.request.use(
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (refreshToken) {
+        config.headers['x-refresh-token'] = refreshToken;
+      }
+
+      const adminKey = localStorage.getItem('calofit_admin_key');
+      if (adminKey) {
+        config.headers['x-admin-key'] = adminKey;
+      }
     }
     return config;
   },
   (error) => Promise.reject(error),
 );
 
-// ─── Response Interceptor: 401 da token refresh ────────
+// ─── Response Interceptor: 401 Silent Refresh ────────
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (token: string) => void;
@@ -49,19 +59,20 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Refresh endpoint dan 401 kelsa — login sahifasida jimgina tozalash
+    // If 401 on refresh or login endpoint — clear session quietly
     if (
       error.response?.status === 401 &&
       (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/telegram/login'))
     ) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
       }
       return Promise.reject(error);
     }
 
-    // Boshqa 401 lar — refresh attempt
+    // Other 401s — attempt graceful refresh
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -76,17 +87,36 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await api.post('/auth/refresh');
+        const storedRefresh = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+        const { data } = await api.post('/auth/refresh', {
+          refreshToken: storedRefresh || undefined,
+        });
+
         const newToken = data.accessToken;
-        localStorage.setItem('accessToken', newToken);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('accessToken', newToken);
+          if (data.refreshToken) {
+            localStorage.setItem('refreshToken', data.refreshToken);
+          }
+          if (data.user) {
+            localStorage.setItem('user', JSON.stringify(data.user));
+          }
+        }
+
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         processQueue(null, newToken);
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('accessToken');
-          window.location.href = '/uz/login';
+          // Do not delete token immediately on network loss
+          if (refreshError && (refreshError as any).response?.status === 401) {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('user');
+            const locale = window.location.pathname.split('/')[1] || 'ru';
+            window.location.href = `/${locale}/login`;
+          }
         }
         return Promise.reject(refreshError);
       } finally {

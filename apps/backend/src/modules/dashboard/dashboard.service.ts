@@ -63,7 +63,10 @@ export class DashboardService {
 
     const dailyGoal = profile?.dailyCalorieGoal ?? 2000;
     const remaining = Math.max(0, dailyGoal - consumed.calories);
-    const progress = Math.min(100, Math.round((consumed.calories / dailyGoal) * 100));
+    const progress = Math.min(
+      100,
+      Math.round((consumed.calories / dailyGoal) * 100),
+    );
 
     return {
       profile: profile

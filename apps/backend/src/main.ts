@@ -25,14 +25,23 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || corsOrigins.includes('*') || corsOrigins.includes(origin)) {
+      if (
+        !origin ||
+        corsOrigins.includes('*') ||
+        corsOrigins.includes(origin)
+      ) {
         return callback(null, true);
       }
       return callback(null, true);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'X-Requested-With',
+    ],
   });
 
   // 2. Security Middlewares

@@ -11,21 +11,36 @@ import {
 import { api } from '@/lib/api';
 import { useRouter } from '@/i18n/routing';
 
-interface User {
+export interface User {
   id: string;
   email: string;
+  role?: 'USER' | 'ADMIN';
   hasProfile: boolean;
   name?: string;
+  telegramId?: string;
+  telegramUsername?: string;
+  trialEndsAt?: string;
+  subscriptionExpiresAt?: string | null;
+  isSubscriptionActive?: boolean;
+  isTrialActive?: boolean;
+  hasAccess?: boolean;
+  subscriptionTier?: 'TRIAL' | 'PREMIUM' | 'EXPIRED' | 'ADMIN';
+  daysRemaining?: number;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  hasAccess: boolean;
+  isTrialActive: boolean;
+  isSubscriptionActive: boolean;
+  daysRemaining: number;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<{ isEmailVerified: boolean } | void>;
   logout: () => Promise<void>;
   setUser: (user: User) => void;
+  refreshSession: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,6 +49,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+
+  const refreshSession = useCallback(async (): Promise<User | null> => {
+    try {
+      const { data } = await api.get('/auth/me');
+      if (data) {
+        setUser(data);
+        localStorage.setItem('user', JSON.stringify(data));
+        return data;
+      }
+    } catch {
+      // Ignore if unauthenticated
+    }
+    return null;
+  }, []);
 
   // Boshlang'ich auth holatini tekshirish
   useEffect(() => {
@@ -56,19 +85,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           api
             .post('/auth/telegram/login', { initData, telegramUser })
             .then(({ data }) => {
-              localStorage.setItem('accessToken', data.accessToken);
-              localStorage.setItem('user', JSON.stringify(data.user));
-              setUser(data.user);
+              if (data.accessToken) {
+                localStorage.setItem('accessToken', data.accessToken);
+              }
+              if (data.refreshToken) {
+                localStorage.setItem('refreshToken', data.refreshToken);
+              }
+              if (data.user) {
+                localStorage.setItem('user', JSON.stringify(data.user));
+                setUser(data.user);
+              }
 
-              if (data.user.hasProfile) {
+              if (data.user?.hasProfile) {
                 router.push('/dashboard');
               } else {
                 router.push('/profile');
               }
             })
             .catch((err) => {
-              console.error('Telegram WebApp auto-login failed:', err);
-              // Fallback to local storage if API call fails offline
+              console.error('Telegram WebApp auto-login error:', err);
+              // Fallback to local storage if network glitch
               const token = localStorage.getItem('accessToken');
               const storedUser = localStorage.getItem('user');
               if (token && storedUser) {
@@ -76,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   setUser(JSON.parse(storedUser));
                 } catch {
                   localStorage.removeItem('accessToken');
+                  localStorage.removeItem('refreshToken');
                   localStorage.removeItem('user');
                 }
               }
@@ -94,9 +131,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (token && storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const parsed = JSON.parse(storedUser);
+        setUser(parsed);
+        // Background sync to refresh latest subscription status
+        api.get('/auth/me').then(({ data }) => {
+          if (data) {
+            setUser(data);
+            localStorage.setItem('user', JSON.stringify(data));
+          }
+        }).catch(() => {});
       } catch {
         localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
       }
     }
@@ -106,11 +152,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string) => {
       const { data } = await api.post('/auth/login', { email, password });
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      setUser(data.user);
+      if (data.accessToken) {
+        localStorage.setItem('accessToken', data.accessToken);
+      }
+      if (data.refreshToken) {
+        localStorage.setItem('refreshToken', data.refreshToken);
+      }
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+        setUser(data.user);
+      }
 
-      if (data.user.hasProfile) {
+      if (data.user?.hasProfile) {
         router.push('/dashboard');
       } else {
         router.push('/profile');
@@ -128,9 +181,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { isEmailVerified: false };
       }
 
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      setUser(data.user);
+      if (data.accessToken) {
+        localStorage.setItem('accessToken', data.accessToken);
+      }
+      if (data.refreshToken) {
+        localStorage.setItem('refreshToken', data.refreshToken);
+      }
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+        setUser(data.user);
+      }
       router.push('/profile'); // Yangi user → profil onboarding
       return { isEmailVerified: true };
     },
@@ -139,15 +199,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await api.post('/auth/logout');
+      const refreshToken = localStorage.getItem('refreshToken') || undefined;
+      await api.post('/auth/logout', { refreshToken });
     } catch {
-      // Ignore — token already expired
+      // Ignore
     }
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     setUser(null);
     router.push('/login');
   }, [router]);
+
+  const hasAccess = user ? (user.role === 'ADMIN' || user.hasAccess !== false) : false;
+  const isTrialActive = !!user?.isTrialActive;
+  const isSubscriptionActive = !!user?.isSubscriptionActive;
+  const daysRemaining = user?.daysRemaining ?? 0;
 
   return (
     <AuthContext.Provider
@@ -155,10 +222,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isLoading,
         isAuthenticated: !!user,
+        hasAccess,
+        isTrialActive,
+        isSubscriptionActive,
+        daysRemaining,
         login,
         register,
         logout,
         setUser,
+        refreshSession,
       }}
     >
       {children}

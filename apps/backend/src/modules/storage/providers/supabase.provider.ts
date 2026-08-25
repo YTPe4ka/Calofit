@@ -71,7 +71,10 @@ export class SupabaseStorageProvider extends StorageProvider {
       .remove([storageKey]);
 
     if (error) {
-      this.logger.warn(`Storage delete failed for key: ${storageKey}`, error.message);
+      this.logger.warn(
+        `Storage delete failed for key: ${storageKey}`,
+        error.message,
+      );
     }
   }
 }

@@ -9,7 +9,10 @@ export class MailService {
   private readonly fromAddress: string;
 
   constructor(private config: ConfigService) {
-    this.fromAddress = this.config.get<string>('SMTP_FROM', 'CaloFit <no-reply@calofit.com>');
+    this.fromAddress = this.config.get<string>(
+      'SMTP_FROM',
+      'CaloFit <no-reply@calofit.com>',
+    );
 
     const host = this.config.get<string>('SMTP_HOST');
     const port = this.config.get<number>('SMTP_PORT');
@@ -32,7 +35,9 @@ export class MailService {
   }
 
   async sendVerificationEmail(email: string, locale: string, token: string) {
-    const frontendUrl = this.config.get<string>('CORS_ORIGINS', 'http://localhost:3001').split(',')[0];
+    const frontendUrl = this.config
+      .get<string>('CORS_ORIGINS', 'http://localhost:3001')
+      .split(',')[0];
     const verificationUrl = `${frontendUrl}/${locale}/verify-email?token=${token}`;
 
     const subjectMap: Record<string, string> = {
@@ -91,17 +96,21 @@ export class MailService {
         });
         this.logger.log(`Verification email sent successfully to: ${email}`);
       } catch (err) {
-        this.logger.error(`Failed to send verification email to: ${email}`, err);
+        this.logger.error(
+          `Failed to send verification email to: ${email}`,
+          err,
+        );
       }
     } else {
       // Dev mode: log to console with big visible banner
-      this.logger.log('\n' +
-        '========================================================================\n' +
-        `📧 [DEVELOPMENT MODE: VERIFICATION EMAIL FOR ${email}]\n` +
-        `Subject: ${subject}\n` +
-        `Verification Link:\n` +
-        `👉 ${verificationUrl}\n` +
-        '========================================================================'
+      this.logger.log(
+        '\n' +
+          '========================================================================\n' +
+          `📧 [DEVELOPMENT MODE: VERIFICATION EMAIL FOR ${email}]\n` +
+          `Subject: ${subject}\n` +
+          `Verification Link:\n` +
+          `👉 ${verificationUrl}\n` +
+          '========================================================================',
       );
     }
   }

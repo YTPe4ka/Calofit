@@ -13,7 +13,10 @@ export class FeedbackController {
   @Post()
   @Public()
   @ApiOperation({ summary: 'Shikoyat yoki fikr-mulohaza yuborish' })
-  @ApiResponse({ status: 201, description: 'Muvaffaqiyatli saqlandi va Telegramga yuborildi' })
+  @ApiResponse({
+    status: 201,
+    description: 'Muvaffaqiyatli saqlandi va Telegramga yuborildi',
+  })
   async submitFeedback(@Body() dto: CreateFeedbackDto, @Req() req: Request) {
     // optional extraction of userId if user is logged in
     const userId = (req as any).user?.id;

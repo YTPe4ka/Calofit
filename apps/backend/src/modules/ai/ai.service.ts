@@ -6,7 +6,10 @@ import {
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { AIProvider, FoodAnalysisResult } from './interfaces/ai-provider.interface';
+import {
+  AIProvider,
+  FoodAnalysisResult,
+} from './interfaces/ai-provider.interface';
 
 @Injectable()
 export class AiService {
@@ -15,7 +18,11 @@ export class AiService {
 
   constructor(@Inject('AI_PROVIDER') private provider: AIProvider) {}
 
-  async analyzeFood(buffer: Buffer, mimeType: string, locale?: string): Promise<FoodAnalysisResult> {
+  async analyzeFood(
+    buffer: Buffer,
+    mimeType: string,
+    locale?: string,
+  ): Promise<FoodAnalysisResult> {
     try {
       return await Promise.race([
         this.provider.analyzeFood(buffer, mimeType, locale),
@@ -30,7 +37,7 @@ export class AiService {
         TIMEOUT: () => {
           throw new ServiceUnavailableException({
             error: 'AI_SERVICE_TIMEOUT',
-            message: 'Tahlil vaqti tugadi. Iltimos, qayta urinib ko\'ring.',
+            message: "Tahlil vaqti tugadi. Iltimos, qayta urinib ko'ring.",
           });
         },
         AI_API_ERROR: () => {
@@ -42,7 +49,7 @@ export class AiService {
         AI_PARSE_ERROR: () => {
           throw new ServiceUnavailableException({
             error: 'AI_PARSE_ERROR',
-            message: 'Tahlil natijasini o\'qib bo\'lmadi.',
+            message: "Tahlil natijasini o'qib bo'lmadi.",
           });
         },
         AI_INVALID_RESPONSE: () => {

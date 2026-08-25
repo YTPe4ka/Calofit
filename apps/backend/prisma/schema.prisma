@@ -12,6 +12,11 @@ datasource db {
 
 // ─── Enums ────────────────────────────────────────────────
 
+enum Role {
+  USER
+  ADMIN
+}
+
 enum Gender {
   MALE
   FEMALE
@@ -36,6 +41,7 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique @db.VarChar(255)
   passwordHash String   @map("password_hash") @db.Text
+  role         Role     @default(USER)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -43,12 +49,23 @@ model User {
   verificationToken          String?   @map("verification_token") @db.VarChar(255)
   verificationTokenExpiresAt DateTime? @map("verification_token_expires_at") @db.Timestamptz
 
+  // Telegram fields
+  telegramId       String? @unique @map("telegram_id") @db.VarChar(100)
+  telegramUsername String? @map("telegram_username") @db.VarChar(100)
+  telegramChatId   String? @map("telegram_chat_id") @db.VarChar(100)
+
+  // Subscription / Trial (4 days free trial default)
+  trialEndsAt           DateTime  @default(now()) @map("trial_ends_at") @db.Timestamptz
+  subscriptionExpiresAt DateTime? @map("subscription_expires_at") @db.Timestamptz
+  isSubscriptionActive  Boolean   @default(false) @map("is_subscription_active")
+
   profile       Profile?
   refreshTokens RefreshToken[]
   mealAnalyses  MealAnalysis[]
   mealLogs      MealLog[]
 
   @@index([verificationToken])
+  @@index([telegramId])
   @@map("users")
 }
 
@@ -146,3 +163,17 @@ model Feedback {
 
   @@map("feedbacks")
 }
+
+model TelegramSubscriber {
+  id        String   @id @default(cuid())
+  chatId    String   @unique @map("chat_id") @db.VarChar(100)
+  telegramId String? @map("telegram_id") @db.VarChar(100)
+  username  String?  @db.VarChar(100)
+  firstName String?  @map("first_name") @db.VarChar(100)
+  lang      String   @default("ru") @db.VarChar(10)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("telegram_subscribers")
+}
+

@@ -10,6 +10,8 @@ import { Camera, LogOut, TrendingUp, MessageSquare, Sparkles, Sun, Moon, Globe, 
 import { useTheme } from '@/providers/theme-provider';
 import { toast } from 'sonner';
 
+import { TrialBanner } from '@/components/TrialBanner';
+
 interface ProfileInfo {
   name: string | null;
   dateOfBirth?: string | null;
@@ -280,6 +282,7 @@ export default function DashboardPage({ params }: { params: { locale: string } }
 
   return (
     <main className="min-h-screen pb-28 bg-transparent">
+      <TrialBanner />
 
       {/* Header with Centered Navigation */}
       <header className="w-full max-w-6xl mx-auto px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 border-b border-gray-200/40 dark:border-slate-800/40 bg-white/40 dark:bg-slate-900/10 backdrop-blur-md sticky top-0 z-30 transition-all duration-300">
@@ -304,6 +307,11 @@ export default function DashboardPage({ params }: { params: { locale: string } }
           <Link href="/support" className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-emerald-600 dark:hover:text-emerald-450 transition-all">
             {locale === 'ru' ? 'Помощь' : locale === 'en' ? 'Support' : 'Yordam'}
           </Link>
+          {(user?.role === 'ADMIN' || user?.email?.startsWith('admin@')) && (
+            <Link href="/admin" className="px-3 py-2 rounded-xl text-xs font-extrabold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-all">
+              👑 Admin
+            </Link>
+          )}
         </nav>
 
         {/* Action Controls */}

@@ -10,12 +10,22 @@ export class TelegramController {
 
   @Public()
   @Post('notify')
-  @ApiOperation({ summary: 'Тестовая отправка уведомления пользователям Telegram' })
-  @ApiQuery({ name: 'category', enum: ['morning', 'lunch', 'dinner', 'summary'], required: false })
+  @ApiOperation({
+    summary: 'Тестовая отправка уведомления пользователям Telegram',
+  })
+  @ApiQuery({
+    name: 'category',
+    enum: ['morning', 'lunch', 'dinner', 'summary'],
+    required: false,
+  })
   async triggerNotification(
-    @Query('category') category: 'morning' | 'lunch' | 'dinner' | 'summary' = 'morning',
+    @Query('category')
+    category: 'morning' | 'lunch' | 'dinner' | 'summary' = 'morning',
   ) {
     await this.telegramService.broadcastNotification(category);
-    return { success: true, message: `Notification broadcasted for category: ${category}` };
+    return {
+      success: true,
+      message: `Notification broadcasted for category: ${category}`,
+    };
   }
 }

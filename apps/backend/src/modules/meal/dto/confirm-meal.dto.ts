@@ -19,7 +19,7 @@ export class ConfirmMealDto {
 
   @ApiProperty({ enum: MealType, example: MealType.LUNCH })
   @IsEnum(MealType, {
-    message: 'mealType: BREAKFAST, LUNCH, DINNER yoki SNACK bo\'lishi kerak',
+    message: "mealType: BREAKFAST, LUNCH, DINNER yoki SNACK bo'lishi kerak",
   })
   mealType: MealType;
 
@@ -36,7 +36,7 @@ export class ConfirmMealDto {
 
   @ApiProperty({ example: 450.0, minimum: 0 })
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0, { message: 'Kaloriya manfiy bo\'lishi mumkin emas' })
+  @Min(0, { message: "Kaloriya manfiy bo'lishi mumkin emas" })
   @Max(10_000)
   calories: number;
 

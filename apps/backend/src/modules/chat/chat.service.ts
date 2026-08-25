@@ -43,7 +43,8 @@ export class ChatService {
         });
 
         if (profile) {
-          const age = differenceInYears(new Date(), new Date(profile.dateOfBirth)) || 25;
+          const age =
+            differenceInYears(new Date(), new Date(profile.dateOfBirth)) || 25;
           const weight = Number(profile.weightKg);
           const heightM = profile.heightCm / 100;
           const bmi = (weight / (heightM * heightM)).toFixed(1);
@@ -81,11 +82,13 @@ export class ChatService {
         temperature: 0.7,
       });
 
-      return response.choices[0]?.message?.content ?? 'Sorry, I could not generate a response.';
+      return (
+        response.choices[0]?.message?.content ??
+        'Sorry, I could not generate a response.'
+      );
     } catch (error) {
       this.logger.error('Failed to communicate with OpenAI API', error);
       throw new Error('AI_COMMUNICATION_ERROR');
     }
   }
 }
-
