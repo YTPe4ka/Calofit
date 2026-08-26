@@ -36,7 +36,7 @@ export class GeminiProvider extends AIProvider {
       config.get<string>('GOOGLE_AI_API_KEY') ||
       '';
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.modelName = config.get<string>('GEMINI_MODEL', 'gemini-3.6-flash');
+    this.modelName = config.get<string>('GEMINI_MODEL', 'gemini-1.5-flash');
   }
 
   async analyzeFood(

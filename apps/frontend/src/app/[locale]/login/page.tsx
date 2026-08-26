@@ -121,7 +121,9 @@ export default function LoginPage() {
       setIsTgModalOpen(false);
       window.location.href = `/${locale}/dashboard`;
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Telegram auth failed');
+      console.error('[Telegram Auth Error]:', err);
+      const rawError = err.response?.data?.message || err.response?.data?.error || err.message || 'Telegram auth failed';
+      toast.error(`Ошибка: ${rawError}`, { duration: 6000 });
     } finally {
       setIsLoading(false);
     }

@@ -78,15 +78,9 @@ export default function AnalyzePage() {
       });
     },
     onError: (err: any) => {
-      const serverMessage = err?.response?.data?.message;
-      toast.error(
-        serverMessage ||
-        (locale === 'ru' 
-          ? 'Ошибка при анализе. Пожалуйста, убедитесь, что на фото есть еда!' 
-          : locale === 'en' 
-          ? 'Analysis failed. Please make sure the photo contains food!' 
-          : 'Tahlilda xatolik yuz berdi. Iltimos, taom rasmini yuklang!')
-      );
+      console.error('[Food Analysis Error]:', err);
+      const serverMessage = err?.response?.data?.message || err?.message || 'Ошибка при анализе';
+      toast.error(`Ошибка анализа: ${serverMessage}`, { duration: 6000 });
     },
   });
 
