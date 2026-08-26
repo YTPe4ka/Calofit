@@ -125,16 +125,32 @@ export class AuthController {
   @Post('telegram/login')
   @Public()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Telegram Web App authentication' })
+  @ApiOperation({ summary: 'Telegram Web App & Direct Telegram Authentication' })
   @ApiResponse({ status: 200, description: 'Muvaffaqiyatli kirish' })
   async telegramLogin(
-    @Body() body: { initData?: string; telegramUser?: any; guestId?: string },
+    @Body()
+    body: {
+      initData?: string;
+      telegramUser?: any;
+      guestId?: string;
+      username?: string;
+      phone?: string;
+      telegramId?: string;
+      directUsernameOrPhone?: string;
+    },
     @Res({ passthrough: true }) res: Response,
   ) {
+    const directVal =
+      body.directUsernameOrPhone ||
+      body.username ||
+      body.phone ||
+      body.telegramId;
+
     const result = await this.authService.telegramLogin(
       body.initData || '',
       body.telegramUser,
       body.guestId,
+      directVal,
     );
     if (result.refreshToken) {
       res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);

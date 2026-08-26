@@ -1,20 +1,40 @@
 import axios from 'axios';
 
-const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-const cleanApiUrl = rawApiUrl.replace(/\/+$/, '');
-const baseURL = cleanApiUrl.endsWith('/api/v1') ? cleanApiUrl : `${cleanApiUrl}/api/v1`;
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const customApi = localStorage.getItem('calofit_api_url');
+    if (customApi && customApi.trim()) {
+      const clean = customApi.trim().replace(/\/+$/, '');
+      return clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
+    }
+  }
+
+  const rawApiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (rawApiUrl && rawApiUrl.trim()) {
+    const clean = rawApiUrl.trim().replace(/\/+$/, '');
+    return clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
+  }
+
+  if (typeof window !== 'undefined' && window.location.origin) {
+    return `${window.location.origin}/api/v1`;
+  }
+
+  return 'http://localhost:3000/api/v1';
+}
 
 export const api = axios.create({
-  baseURL,
-  withCredentials: true, // For HttpOnly cookie support
+  baseURL: getApiBaseUrl(),
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// ─── Request Interceptor: Attach Access Token & Admin Key ────────
+// ─── Request Interceptor: Attach Access Token, Admin Key & Dynamic BaseURL ────────
 api.interceptors.request.use(
   (config) => {
+    config.baseURL = getApiBaseUrl();
+
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('accessToken');
       if (token) {
@@ -109,7 +129,6 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         if (typeof window !== 'undefined') {
-          // Do not delete token immediately on network loss
           if (refreshError && (refreshError as any).response?.status === 401) {
             localStorage.removeItem('accessToken');
             localStorage.removeItem('refreshToken');

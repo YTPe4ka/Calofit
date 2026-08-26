@@ -211,6 +211,26 @@ export default function AdminPage() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => {
+              const current = localStorage.getItem('calofit_api_url') || process.env.NEXT_PUBLIC_API_URL || '';
+              const newUrl = prompt('Укажите URL бэкенда (например https://calofit-backend.onrender.com или оставьте пустым для авто):', current);
+              if (newUrl !== null) {
+                if (newUrl.trim()) {
+                  localStorage.setItem('calofit_api_url', newUrl.trim());
+                } else {
+                  localStorage.removeItem('calofit_api_url');
+                }
+                toast.success('URL API обновлён!');
+                fetchAdminData();
+              }
+            }}
+            className="p-2.5 rounded-xl border border-gray-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300 transition-all active:scale-95 cursor-pointer text-xs font-bold"
+            title="Настройка адреса API"
+          >
+            ⚙️ API
+          </button>
+
+          <button
             onClick={fetchAdminData}
             disabled={isLoading}
             className="p-2.5 rounded-xl border border-gray-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300 transition-all active:scale-95 cursor-pointer"

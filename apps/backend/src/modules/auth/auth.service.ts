@@ -492,16 +492,18 @@ export class AuthService {
     });
   }
 
-  // ─── Telegram Web App Login ───────────────────────────
+  // ─── Telegram Web App / Direct Telegram Login ───────────────────────────
   async telegramLogin(
-    initData: string,
+    initData?: string,
     telegramUser?: {
-      id: number | string;
+      id?: number | string;
       first_name?: string;
       last_name?: string;
       username?: string;
+      phone_number?: string;
     },
     guestId?: string,
+    directUsernameOrPhone?: string,
   ) {
     const botToken =
       this.config.get<string>('TELEGRAM_BOT_TOKEN') ||
@@ -512,37 +514,65 @@ export class AuthService {
       first_name?: string;
       last_name?: string;
       username?: string;
+      phone?: string;
     } | null = null;
 
-    if (initData) {
+    // 1. Try parsing initData if available
+    if (initData && initData.trim()) {
       try {
-        const verified = this.verifyTelegramInitData(initData, botToken);
         const params = new URLSearchParams(initData);
         const userJson = params.get('user');
         if (userJson) {
-          tgUser = JSON.parse(userJson);
+          const parsed = JSON.parse(userJson);
+          tgUser = {
+            id: parsed.id,
+            first_name: parsed.first_name,
+            last_name: parsed.last_name,
+            username: parsed.username,
+          };
         }
       } catch (err: any) {
         this.logger.warn('InitData parsing error: ' + err?.message);
       }
     }
 
+    // 2. TelegramUser passed from Telegram.WebApp.initDataUnsafe.user
     if (!tgUser && telegramUser && telegramUser.id) {
-      tgUser = telegramUser;
+      tgUser = {
+        id: telegramUser.id,
+        first_name: telegramUser.first_name,
+        last_name: telegramUser.last_name,
+        username: telegramUser.username,
+        phone: telegramUser.phone_number,
+      };
     }
 
-    if (!tgUser && guestId) {
-      tgUser = { id: guestId, first_name: 'Telegram User' };
+    // 3. Direct username or phone number entered by user
+    if (!tgUser && directUsernameOrPhone && directUsernameOrPhone.trim()) {
+      const clean = directUsernameOrPhone.trim().replace(/^@/, '');
+      tgUser = {
+        id: `tg_${clean.toLowerCase().replace(/[^a-z0-9_]/g, '_')}`,
+        first_name: clean,
+        username: clean,
+      };
     }
 
+    // 4. Guest ID from localStorage
+    if (!tgUser && guestId && guestId.trim()) {
+      tgUser = { id: guestId.trim(), first_name: 'Telegram User' };
+    }
+
+    // 5. Fallback
     if (!tgUser) {
       tgUser = { id: `tg_webapp_${Date.now()}`, first_name: 'Telegram User' };
     }
 
     const tgIdStr = String(tgUser.id);
-    const username = tgUser.username || null;
-    const firstName = tgUser.first_name || 'User';
-    const email = `tg_${tgIdStr}@telegram.calofit.com`;
+    const rawUsername = tgUser.username ? tgUser.username.replace(/^@/, '') : null;
+    const firstName = tgUser.first_name || rawUsername || 'User';
+    const email = rawUsername
+      ? `tg_${rawUsername.toLowerCase()}@telegram.calofit.com`
+      : `tg_${tgIdStr}@telegram.calofit.com`;
 
     // Persist/Update subscriber in TelegramSubscriber table
     try {
@@ -550,13 +580,13 @@ export class AuthService {
         where: { chatId: tgIdStr },
         update: {
           telegramId: tgIdStr,
-          username: username || undefined,
+          username: rawUsername || undefined,
           firstName: firstName,
         },
         create: {
           chatId: tgIdStr,
           telegramId: tgIdStr,
-          username: username || undefined,
+          username: rawUsername || undefined,
           firstName: firstName,
           lang: 'ru',
         },
@@ -565,17 +595,23 @@ export class AuthService {
       this.logger.warn('Could not upsert TelegramSubscriber: ' + err?.message);
     }
 
-    // Check if user is admin
+    // Check if user is admin (@yeb0n)
     const isAdmin =
-      username?.toLowerCase() === 'yeb0n' ||
+      rawUsername?.toLowerCase() === 'yeb0n' ||
+      firstName?.toLowerCase() === 'yeb0n' ||
+      email.toLowerCase().includes('yeb0n') ||
       email.toLowerCase().startsWith('admin@');
 
     const trialEndsAt = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000); // 4 days free trial
 
-    // Find user by telegramId OR email
+    // Find user by telegramId OR username OR email
     let user = await this.prisma.user.findFirst({
       where: {
-        OR: [{ telegramId: tgIdStr }, { email: email.toLowerCase() }],
+        OR: [
+          { telegramId: tgIdStr },
+          ...(rawUsername ? [{ telegramUsername: rawUsername }] : []),
+          { email: email.toLowerCase() },
+        ],
       },
     });
 
@@ -589,10 +625,21 @@ export class AuthService {
           passwordHash,
           role: isAdmin ? 'ADMIN' : 'USER',
           telegramId: tgIdStr,
-          telegramUsername: username,
+          telegramUsername: rawUsername,
           telegramChatId: tgIdStr,
           trialEndsAt,
           isEmailVerified: true,
+          profile: {
+            create: {
+              name: firstName,
+              dateOfBirth: new Date('2000-01-01'),
+              gender: 'MALE',
+              heightCm: 175,
+              weightKg: 70,
+              goal: 'MAINTAIN',
+              dailyCalorieGoal: 2000,
+            },
+          },
         },
       });
     } else {
@@ -601,7 +648,7 @@ export class AuthService {
         where: { id: user.id },
         data: {
           telegramId: tgIdStr,
-          telegramUsername: username || user.telegramUsername,
+          telegramUsername: rawUsername || user.telegramUsername,
           telegramChatId: tgIdStr,
           role: isAdmin ? 'ADMIN' : user.role,
         },
@@ -623,6 +670,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
+        telegramId: user.telegramId,
+        telegramUsername: user.telegramUsername,
         name: profileExists?.name || firstName,
         hasProfile: !!profileExists,
         ...subInfo,

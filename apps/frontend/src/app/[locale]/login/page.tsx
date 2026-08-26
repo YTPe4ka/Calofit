@@ -5,9 +5,9 @@ import { useTranslations } from 'next-intl';
 import { useAuth } from '@/providers/auth-provider';
 import { Link, useRouter, usePathname } from '@/i18n/routing';
 import { toast } from 'sonner';
-import { useSearchParams, useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Mail, RefreshCw, AlertTriangle, Loader2, Sun, Moon, ChevronDown, Check, Eye, EyeOff, Send } from 'lucide-react';
+import { Sun, Moon, ChevronDown, Check, Eye, EyeOff, Loader2, AlertTriangle, Send, X, Smartphone, UserCheck } from 'lucide-react';
 import { useTheme } from '@/providers/theme-provider';
 
 const LANG_MAP = {
@@ -18,14 +18,15 @@ const LANG_MAP = {
 
 export default function LoginPage() {
   const t = useTranslations('auth');
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const locale = (params?.locale as string) || 'uz';
   const router = useRouter();
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
   const [langOpen, setLangOpen] = useState(false);
-  const searchParams = useSearchParams();
-  const params = useParams();
-  const locale = (params?.locale as string) || 'uz';
-  const { login, setUser, user } = useAuth();
+
+  const { login, setUser } = useAuth();
   
   // Instant direct redirect if session exists in localStorage to prevent loading flash
   useEffect(() => {
@@ -54,34 +55,86 @@ export default function LoginPage() {
   const [showVerifyPrompt, setShowVerifyPrompt] = useState(false);
   const [isResending, setIsResending] = useState(false);
 
-  const handleTelegramClick = async () => {
+  // Direct Telegram Login Modal State
+  const [isTgModalOpen, setIsTgModalOpen] = useState(false);
+  const [tgInputVal, setTgInputVal] = useState('');
+
+  // Auto-login if inside Telegram WebApp
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const tg = (window as any).Telegram?.WebApp;
+    try { tg?.ready(); tg?.expand(); } catch {}
+
+    const tgUser = tg?.initDataUnsafe?.user;
+    if (tgUser && (tgUser.id || tgUser.username)) {
+      const autoLogin = async () => {
+        try {
+          const { data } = await api.post('/auth/telegram/login', {
+            initData: tg.initData || '',
+            telegramUser: tgUser,
+          });
+          if (data.accessToken) {
+            localStorage.setItem('accessToken', data.accessToken);
+            if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+            if (data.user) {
+              localStorage.setItem('user', JSON.stringify(data.user));
+              setUser(data.user);
+            }
+            window.location.href = `/${locale}/dashboard`;
+          }
+        } catch (err) {
+          console.warn('Auto Telegram login failed:', err);
+        }
+      };
+      autoLogin();
+    }
+  }, [locale, setUser]);
+
+  const handleTelegramDirectAuth = async (inputIdentifier?: string) => {
     setIsLoading(true);
     try {
       const tg = (window as any).Telegram?.WebApp;
-      try { tg?.ready(); tg?.expand(); } catch {}
-
       const initData = tg?.initData || '';
       const telegramUser = tg?.initDataUnsafe?.user;
+
       let guestId = localStorage.getItem('tg_guest_id');
-      if (!guestId) {
+      if (!guestId && !inputIdentifier) {
         guestId = 'guest_' + Math.random().toString(36).substring(2, 11);
         localStorage.setItem('tg_guest_id', guestId);
       }
 
-      const { data } = await api.post('/auth/telegram/login', { initData, telegramUser, guestId });
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      setUser(data.user);
-      toast.success(locale === 'ru' ? 'Вход выполнен!' : 'Muvaffaqiyatli kirildi!');
-      if (data.user.hasProfile) {
-        window.location.href = `/${locale}/dashboard`;
-      } else {
-        window.location.href = `/${locale}/profile`;
+      const { data } = await api.post('/auth/telegram/login', {
+        initData,
+        telegramUser,
+        guestId,
+        directUsernameOrPhone: inputIdentifier || tgInputVal || undefined,
+      });
+
+      if (data.accessToken) localStorage.setItem('accessToken', data.accessToken);
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+        setUser(data.user);
       }
+
+      toast.success(locale === 'ru' ? 'Вход выполнен!' : 'Muvaffaqiyatli kirildi!');
+      setIsTgModalOpen(false);
+      window.location.href = `/${locale}/dashboard`;
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Telegram auth failed');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleTelegramClick = () => {
+    const tg = (window as any).Telegram?.WebApp;
+    // If inside real Telegram Mini App with user info, login directly
+    if (tg?.initDataUnsafe?.user?.id) {
+      handleTelegramDirectAuth();
+    } else {
+      // Open quick username input modal
+      setIsTgModalOpen(true);
     }
   };
 
@@ -94,34 +147,26 @@ export default function LoginPage() {
         let success = false;
         try {
           const redirectUri = `${window.location.origin}/${locale}/login`;
-          const targetUrl = `${api.defaults.baseURL}/auth/google/callback`;
-          console.log(`[Google OAuth Debug] Requesting exchange on url: ${targetUrl} with redirectUri: ${redirectUri}`);
+          const targetUrl = `/auth/google/callback`;
           
-          // Modify code callback on backend to use dynamic redirect uri match
-          const { data } = await api.post('/auth/google/callback', { 
+          const { data } = await api.post(targetUrl, { 
             code,
             redirectUri 
           });
           
           localStorage.setItem('accessToken', data.accessToken);
+          if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
           localStorage.setItem('user', JSON.stringify(data.user));
           setUser(data.user);
           toast.success(locale === 'ru' ? 'Вход выполнен!' : 'Muvaffaqiyatli kirildi!');
           
           success = true;
-          if (data.user.hasProfile) {
-            window.location.href = `/${locale}/dashboard`;
-          } else {
-            window.location.href = `/${locale}/profile`;
-          }
+          window.location.href = `/${locale}/dashboard`;
         } catch (err: any) {
-          console.error('[Google OAuth Debug] Exchange failed:', err);
-          console.error('[Google OAuth Debug] Response data:', err.response?.data);
           toast.error(err.response?.data?.message || 'Google OAuth failed');
         } finally {
           setIsLoading(false);
           if (!success) {
-            // Clear query params to prevent double exchange only on failure
             router.replace('/login');
           }
         }
@@ -166,7 +211,7 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = () => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '1048705342403-placeholder.apps.googleusercontent.com';
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '569727220358-958a9jgjqq1m38h9hf6saba54rpa4mvh.apps.googleusercontent.com';
     const redirectUri = `${window.location.origin}/${locale}/login`;
     
     const targetUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
@@ -182,7 +227,6 @@ export default function LoginPage() {
     <main className="relative min-h-screen flex items-center justify-center p-4 bg-transparent">
       {/* Floating Header Toolbar */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
-        {/* Theme switch button */}
         <button
           type="button"
           onClick={toggleTheme}
@@ -259,18 +303,16 @@ export default function LoginPage() {
               </div>
               <p className="text-[10px] text-amber-800 dark:text-slate-350 leading-relaxed font-semibold">
                 {locale === 'ru'
-                  ? 'Чтобы войти, сначала подтвердите почту по ссылке из письма.'
-                  : locale === 'en'
-                  ? 'Please confirm your email by clicking the link in your verification email before logging in.'
-                  : 'Tizimga kirishdan avval pochtangizni tasdiqlovchi havolani bosing.'}
+                  ? 'Ваш email еще не подтвержден. Мы отправили вам ссылку.'
+                  : 'Profilingizni faollashtirish uchun pochtangizga yuborilgan tasdiqlash havolasini bosing.'}
               </p>
               <button
+                type="button"
                 onClick={handleResend}
                 disabled={isResending}
-                className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50 cursor-pointer"
+                className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
               >
-                <RefreshCw size={12} className={isResending ? 'animate-spin' : ''} />
-                {locale === 'ru' ? 'Выслать ссылку повторно' : locale === 'en' ? 'Resend Verification' : 'Havolani qayta yuborish'}
+                {isResending ? 'Yuborilmoqda...' : 'Tasdiqlash xatini qayta yuborish'}
               </button>
             </div>
           )}
@@ -377,6 +419,56 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* Direct Telegram Username / Phone Login Modal */}
+      {isTgModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 shadow-2xl p-6 space-y-5 relative animate-scale-up">
+            <button
+              type="button"
+              onClick={() => setIsTgModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="text-center space-y-1">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-500 mb-2">
+                <Send size={24} />
+              </div>
+              <h3 className="text-base font-extrabold text-gray-900 dark:text-white">
+                {locale === 'ru' ? 'Вход по Telegram' : 'Telegram orqali kirish'}
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                {locale === 'ru'
+                  ? 'Введите ваш @username или номер телефона для мгновенного входа без пароля:'
+                  : 'Parolsiz tezkor kirish uchun @username yoki telefon raqamingizni kiriting:'}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="@username (например @yeb0n) или телефон"
+                value={tgInputVal}
+                onChange={(e) => setTgInputVal(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950 text-gray-900 dark:text-white placeholder:text-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                autoFocus
+              />
+
+              <button
+                type="button"
+                onClick={() => handleTelegramDirectAuth(tgInputVal)}
+                disabled={isLoading || !tgInputVal.trim()}
+                className="w-full py-3 rounded-xl font-bold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/25 active:scale-95 transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isLoading ? <Loader2 size={16} className="animate-spin" /> : <UserCheck size={16} />}
+                <span>{locale === 'ru' ? 'Войти моментально' : 'Tezkor kirish'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

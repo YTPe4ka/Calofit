@@ -24,16 +24,7 @@ async function bootstrap() {
     : ['http://localhost:3001'];
 
   app.enableCors({
-    origin: (origin, callback) => {
-      if (
-        !origin ||
-        corsOrigins.includes('*') ||
-        corsOrigins.includes(origin)
-      ) {
-        return callback(null, true);
-      }
-      return callback(null, true);
-    },
+    origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
@@ -41,6 +32,9 @@ async function bootstrap() {
       'Authorization',
       'Accept',
       'X-Requested-With',
+      'x-admin-key',
+      'x-refresh-token',
+      'Origin',
     ],
   });
 

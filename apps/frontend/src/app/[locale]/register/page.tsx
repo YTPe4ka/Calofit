@@ -271,36 +271,29 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={async () => {
-                setIsLoading(true);
-                try {
-                  const tg = (window as any).Telegram?.WebApp;
-                  try { tg?.ready(); tg?.expand(); } catch {}
-
-                  const initData = tg?.initData || '';
-                  const telegramUser = tg?.initDataUnsafe?.user;
-                  let guestId = localStorage.getItem('tg_guest_id');
-                  if (!guestId) {
-                    guestId = 'guest_' + Math.random().toString(36).substring(2, 11);
-                    localStorage.setItem('tg_guest_id', guestId);
-                  }
-
-                  const { data } = await api.post('/auth/telegram/login', { initData, telegramUser, guestId });
-                  if (data.accessToken) localStorage.setItem('accessToken', data.accessToken);
-                  if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-                  if (data.user) {
-                    localStorage.setItem('user', JSON.stringify(data.user));
-                    setUser(data.user);
-                  }
-                  toast.success(locale === 'ru' ? 'Регистрация успешна!' : 'Muvaffaqiyatli ro‘yxatdan o‘tildi!');
-                  if (data.user?.hasProfile) {
+                const tg = (window as any).Telegram?.WebApp;
+                if (tg?.initDataUnsafe?.user?.id) {
+                  setIsLoading(true);
+                  try {
+                    const initData = tg?.initData || '';
+                    const telegramUser = tg?.initDataUnsafe?.user;
+                    const { data } = await api.post('/auth/telegram/login', { initData, telegramUser });
+                    if (data.accessToken) localStorage.setItem('accessToken', data.accessToken);
+                    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+                    if (data.user) {
+                      localStorage.setItem('user', JSON.stringify(data.user));
+                      setUser(data.user);
+                    }
+                    toast.success(locale === 'ru' ? 'Регистрация успешна!' : 'Muvaffaqiyatli ro‘yxatdan o‘tildi!');
                     window.location.href = `/${locale}/dashboard`;
-                  } else {
-                    window.location.href = `/${locale}/profile`;
+                  } catch (err: any) {
+                    toast.error(err.response?.data?.message || 'Telegram auth failed');
+                  } finally {
+                    setIsLoading(false);
                   }
-                } catch (err: any) {
-                  toast.error(err.response?.data?.message || 'Telegram auth failed');
-                } finally {
-                  setIsLoading(false);
+                } else {
+                  // Redirect to login where user can type @username in 1 tap
+                  window.location.href = `/${locale}/login`;
                 }
               }}
               disabled={isLoading}
