@@ -44,8 +44,9 @@ export class AuthService {
       type: argon2.argon2id,
     });
 
-    // Auto-verify if email is admin@calofit.com or matches admin prefix
-    const isTestAccount = dto.email.toLowerCase().startsWith('admin@');
+    // Auto-verify if email is admin@calofit.com, or auto-generated telegram accounts
+    const isTestAccount = dto.email.toLowerCase().startsWith('admin@') || 
+                          dto.email.toLowerCase().includes('@telegram.calofit.com');
     const trialEndsAt = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000); // 4 days free trial
 
     const rawToken = crypto.randomBytes(32).toString('hex');
@@ -145,11 +146,21 @@ export class AuthService {
     }
 
     // Secure restriction: block access if user is not verified
+    // But auto-verify telegram-generated accounts
     if (!user.isEmailVerified) {
-      throw new ForbiddenException({
-        error: 'EMAIL_NOT_VERIFIED',
-        message: 'Iltimos, avval pochtangizni tasdiqlang.',
-      });
+      const isTelegramAccount = user.email.toLowerCase().includes('@telegram.calofit.com');
+      if (isTelegramAccount) {
+        // Auto-verify telegram accounts on login
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { isEmailVerified: true },
+        });
+      } else {
+        throw new ForbiddenException({
+          error: 'EMAIL_NOT_VERIFIED',
+          message: 'Iltimos, avval pochtangizni tasdiqlang.',
+        });
+      }
     }
 
     const profile = await this.prisma.profile.findUnique({
