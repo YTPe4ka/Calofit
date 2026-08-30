@@ -640,17 +640,6 @@ export class AuthService {
           telegramChatId: tgIdStr,
           trialEndsAt,
           isEmailVerified: true,
-          profile: {
-            create: {
-              name: firstName,
-              dateOfBirth: new Date('2000-01-01'),
-              gender: 'MALE',
-              heightCm: 175,
-              weightKg: 70,
-              goal: 'MAINTAIN',
-              dailyCalorieGoal: 2000,
-            },
-          },
         },
       });
     } else {
