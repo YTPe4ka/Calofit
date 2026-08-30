@@ -78,13 +78,27 @@ export default function DashboardPage({ params }: { params: { locale: string } }
 
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery<DashboardData>({
+  const { data, isLoading, error, refetch } = useQuery<DashboardData>({
     queryKey: ['dashboard'],
     queryFn: async () => {
       const { data } = await api.get('/dashboard');
       return data;
     },
+    retry: 2,
   });
+
+  // Handle unauthorized / token expiration cleanly
+  useEffect(() => {
+    if (error) {
+      const status = (error as any)?.response?.status;
+      if (status === 401) {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
+        window.location.href = `/${locale}/login`;
+      }
+    }
+  }, [error, locale]);
 
   const [selectedMealLog, setSelectedMealLog] = useState<any | null>(null);
 
@@ -142,10 +156,43 @@ export default function DashboardPage({ params }: { params: { locale: string } }
     },
   });
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-white to-emerald-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
         <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      </main>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <main className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-green-50 via-white to-emerald-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-500 flex items-center justify-center mx-auto text-2xl font-bold">
+          ⚠️
+        </div>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+          {locale === 'ru' ? 'Не удалось загрузить данные' : locale === 'en' ? 'Failed to load dashboard' : 'Ma\'lumotlarni yuklab bo\'lmadi'}
+        </h2>
+        <p className="text-xs text-gray-500 max-w-sm">
+          {(error as any)?.response?.data?.message || (error as any)?.message || (locale === 'ru' ? 'Проверьте соединение с сервером' : 'Check server connection')}
+        </p>
+        <div className="flex items-center gap-3 pt-2">
+          <button
+            onClick={() => refetch()}
+            className="px-5 py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-600 text-white shadow-md active:scale-95 transition-all cursor-pointer"
+          >
+            {locale === 'ru' ? 'Повторить попытку' : locale === 'en' ? 'Retry' : 'Qayta urinish'}
+          </button>
+          <button
+            onClick={() => {
+              localStorage.clear();
+              window.location.href = `/${locale}/login`;
+            }}
+            className="px-5 py-2.5 rounded-xl font-bold text-xs bg-gray-200 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gray-300 transition-all cursor-pointer"
+          >
+            {locale === 'ru' ? 'Войти заново' : locale === 'en' ? 'Login again' : 'Qayta kirish'}
+          </button>
+        </div>
       </main>
     );
   }
