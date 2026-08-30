@@ -615,16 +615,22 @@ export class AuthService {
 
     const trialEndsAt = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000); // 4 days free trial
 
-    // Find user by telegramId OR username OR email
+    // Find user strictly by telegramId first
     let user = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          { telegramId: tgIdStr },
-          ...(rawUsername ? [{ telegramUsername: rawUsername }] : []),
-          { email: email.toLowerCase() },
-        ],
-      },
+      where: { telegramId: tgIdStr },
     });
+
+    // If not found by telegramId, check if there is an unlinked user with this email or username
+    if (!user && rawUsername) {
+      user = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { telegramUsername: rawUsername, telegramId: null },
+            { email: email.toLowerCase(), telegramId: null },
+          ],
+        },
+      });
+    }
 
     if (!user) {
       const securePass = crypto.randomBytes(32).toString('hex');
@@ -643,7 +649,7 @@ export class AuthService {
         },
       });
     } else {
-      // Update telegram fields if missing or role if admin
+      // Update telegram fields and role if admin
       user = await this.prisma.user.update({
         where: { id: user.id },
         data: {

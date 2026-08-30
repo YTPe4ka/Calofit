@@ -80,7 +80,11 @@ export default function LoginPage() {
               localStorage.setItem('user', JSON.stringify(data.user));
               setUser(data.user);
             }
-            window.location.href = `/${locale}/dashboard`;
+            if (data.user?.hasProfile) {
+              window.location.href = `/${locale}/dashboard`;
+            } else {
+              window.location.href = `/${locale}/profile`;
+            }
           }
         } catch (err: any) {
           const msg = (err.response?.data?.message || '').toLowerCase();
@@ -115,7 +119,11 @@ export default function LoginPage() {
                   localStorage.setItem('user', JSON.stringify(data.user));
                   setUser(data.user);
                 }
-                window.location.href = `/${locale}/dashboard`;
+                if (data.user?.hasProfile) {
+                  window.location.href = `/${locale}/dashboard`;
+                } else {
+                  window.location.href = `/${locale}/profile`;
+                }
               }
             } catch (fallbackErr) {
               console.warn('Auto fallback login also failed:', fallbackErr);
@@ -177,7 +185,6 @@ export default function LoginPage() {
               });
               data = loginRes.data;
             } catch (loginErr: any) {
-              // Last resort — show a helpful message
               const errMsg = loginErr.response?.data?.message || loginErr.message || 'Auth failed';
               toast.error(locale === 'ru' 
                 ? `Ошибка входа: ${errMsg}. Сервер временно не обновлён, попробуйте через email.`
@@ -205,7 +212,11 @@ export default function LoginPage() {
         }
         toast.success(locale === 'ru' ? 'Вход выполнен!' : 'Muvaffaqiyatli kirildi!');
         setIsTgModalOpen(false);
-        window.location.href = `/${locale}/dashboard`;
+        if (data.user?.hasProfile) {
+          window.location.href = `/${locale}/dashboard`;
+        } else {
+          window.location.href = `/${locale}/profile`;
+        }
       } else {
         toast.error(locale === 'ru' ? 'Не удалось получить токен' : 'Failed to get token', { duration: 5000 });
       }
@@ -223,8 +234,8 @@ export default function LoginPage() {
     if (tg?.initDataUnsafe?.user?.id) {
       handleTelegramDirectAuth();
     } else {
-      // Open quick username input modal
-      setIsTgModalOpen(true);
+      // In external browser, open official Telegram bot to login securely
+      window.open('https://t.me/Calofit_app_bot?start=webapp', '_blank');
     }
   };
 
