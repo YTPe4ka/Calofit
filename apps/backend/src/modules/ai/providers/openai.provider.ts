@@ -10,16 +10,16 @@ import {
 // ─── Zod Schema ───────────────────────────────────────────
 const FoodAnalysisSchema = z.object({
   is_food: z.boolean(),
-  food_name: z.string().min(1).max(100),
-  food_name_local: z.string().max(100),
-  portion_size: z.string().min(1).max(200),
-  calories: z.number().min(0).max(10_000),
-  protein: z.number().min(0).max(1_000),
-  fat: z.number().min(0).max(1_000),
-  carbs: z.number().min(0).max(1_000),
-  confidence_score: z.number().min(0).max(1),
-  notes: z.string().max(200),
-  ingredients: z.array(z.string()),
+  food_name: z.string().max(100).default(''),
+  food_name_local: z.string().max(100).default(''),
+  portion_size: z.string().max(200).default(''),
+  calories: z.number().min(0).max(10_000).default(0),
+  protein: z.number().min(0).max(1_000).default(0),
+  fat: z.number().min(0).max(1_000).default(0),
+  carbs: z.number().min(0).max(1_000).default(0),
+  confidence_score: z.number().min(0).max(1).default(0),
+  notes: z.string().max(500).default(''),
+  ingredients: z.array(z.string()).default([]),
   health_advice: z.string().nullable().optional(),
   portion_breakdown: z.string().nullable().optional(),
 });
@@ -30,57 +30,57 @@ const FOOD_ANALYSIS_SCHEMA = {
   properties: {
     is_food: {
       type: 'boolean',
-      description: 'True if the image contains food or drink',
+      description: 'True if the image contains real edible food or drink for human consumption, false otherwise.',
     },
     food_name: {
       type: 'string',
-      description: 'Name of the food/dish in English. Max 100 chars.',
+      description: 'Name of the food/dish in English. "Not food" if not food.',
     },
     food_name_local: {
       type: 'string',
-      description: 'Local/Uzbek name if known. Empty string if unknown.',
+      description: 'Local name in the requested language. "Not food" if not food.',
     },
     portion_size: {
       type: 'string',
-      description: 'Estimated portion description (e.g. "1 serving (~300g)")',
+      description: 'Estimated portion description (e.g. "1 serving (~300g)"). "0g" if not food.',
     },
     calories: {
       type: 'number',
       description:
-        'Total calories (kcal) for the entire visible portion. Non-negative.',
+        'Total calories (kcal) for the entire visible portion. 0 if not food.',
     },
     protein: {
       type: 'number',
-      description: 'Total protein in grams. Non-negative.',
+      description: 'Total protein in grams. 0 if not food.',
     },
-    fat: { type: 'number', description: 'Total fat in grams. Non-negative.' },
+    fat: { type: 'number', description: 'Total fat in grams. 0 if not food.' },
     carbs: {
       type: 'number',
-      description: 'Total carbohydrates in grams. Non-negative.',
+      description: 'Total carbohydrates in grams. 0 if not food.',
     },
     confidence_score: {
       type: 'number',
-      description: 'Confidence level from 0.0 to 1.0.',
+      description: 'Confidence level from 0.0 to 1.0. 0.0 if not food.',
     },
     notes: {
       type: 'string',
-      description: 'Optional brief note about uncertainty. Max 200 chars.',
+      description: 'Optional brief note. Max 200 chars.',
     },
     ingredients: {
       type: 'array',
       items: { type: 'string' },
       description:
-        'List of detected key ingredients in the language of the request (Uzbek/Russian).',
+        'List of detected key ingredients in the language of the request.',
     },
     health_advice: {
-      type: 'string',
+      type: ['string', 'null'],
       description:
-        'Detailed professional dietician advice about this dish, its nutritional pros and cons, health benefits or warnings (e.g. "Taom oqsilga boy, biroq yog` miqdori ko`p..."). Return in the user`s language (Uzbek or Russian).',
+        'Detailed professional dietician advice about this dish in the requested language. Null if not food.',
     },
     portion_breakdown: {
-      type: 'string',
+      type: ['string', 'null'],
       description:
-        'Estimated breakdown of dish weight components (e.g. "Guruch: ~150g, Go`sht: ~100g, Sabzavotlar: ~50g").',
+        'Estimated breakdown of dish weight components. Null if not food.',
     },
   },
   required: [
@@ -101,22 +101,31 @@ const FOOD_ANALYSIS_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const SYSTEM_PROMPT = `You are a professional dietician, nutritionist, and food recognition AI.
-Your task is to analyze food images and provide accurate nutritional information along with professional dietetic guidance.
+const SYSTEM_PROMPT = `You are a professional dietician, nutritionist, and computer vision food recognition AI.
 
-RULES:
-1. Analyze ONLY food/drink items visible in the image.
-2. If the image does not contain food, set "is_food" to false and return zero values.
-3. Estimate portion size based on visual cues (plate size, utensils, context).
-4. If multiple dishes are visible, analyze the TOTAL combined nutrition.
-5. Provide values per the ENTIRE visible portion, not per 100g.
-6. Use standard nutritional databases (USDA, regional cuisine knowledge) for accuracy.
-7. For Central Asian cuisine (palov, lagman, samsa, etc.), apply region-specific values.
-8. confidence_score reflects your certainty: 0.9-1.0 clear, 0.7-0.89 good, 0.5-0.69 unclear, below 0.5 cannot identify.
-9. Under "health_advice", write a professional dietician analysis of the food, explaining its health pros and cons, and friendly suggestions.
-10. Under "ingredients", list all key visible ingredients of the dish.
-11. Under "portion_breakdown", list individual weight estimates of each main ingredient.
-12. Always respond with valid JSON matching the schema. No extra text.`;
+CRITICAL RULES - STRICT FOOD DETECTION:
+1. First, rigorously determine if the image contains real, edible food or beverages intended for human consumption.
+2. If the image does NOT contain food/drink (for example: animals like cats, dogs, pets; humans, faces, selfies; mountains, landscapes, nature; cars, vehicles, electronics, furniture, clothes, empty plates or empty tables with NO food, screenshots, memes, random objects):
+   - You MUST set "is_food": false
+   - Set "food_name": "Not food"
+   - Set "food_name_local": "Not food"
+   - Set "portion_size": "0g"
+   - Set calories, protein, fat, carbs, and confidence_score to 0
+   - Set "notes": "No food detected"
+   - Set "ingredients": []
+   - Set "health_advice": null
+   - Set "portion_breakdown": null
+3. If and ONLY IF the image contains real food/beverages ("is_food": true):
+   - Estimate portion size based on visual cues (plate size, utensils, context).
+   - If multiple dishes are visible, analyze the TOTAL combined nutrition.
+   - Provide values per the ENTIRE visible portion, not per 100g.
+   - Use standard nutritional databases for accuracy.
+   - For Central Asian cuisine (palov, lagman, samsa, etc.), apply region-specific values.
+   - confidence_score reflects certainty (0.5 to 1.0).
+   - health_advice: Professional dietician advice explaining nutritional pros and cons.
+   - ingredients: List of visible ingredients.
+   - portion_breakdown: Estimated breakdown of dish weight components.
+4. Always respond with valid JSON matching the schema.`;
 
 const USER_PROMPT =
   'Analyze this food image, perform a full dietician analysis, and return a JSON object matching the required schema.';

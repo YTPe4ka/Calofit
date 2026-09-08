@@ -542,12 +542,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         }),
       });
     } catch (err: any) {
-      const errText =
+      const responseMsg = err?.response?.message || err?.message;
+      let errText =
         lang === 'uz'
-          ? "⚠️ Kechirasiz, rasmdagi taomni aniqlab bo'lmadi. Qaytadan aniqroq rasm yuboring!"
+          ? "⚠️ Kechirasiz, rasmdan ovqat aniqlanmadi yoki tahlil qilib bo'lmadi. Qaytadan aniqroq rasm yuboring!"
           : lang === 'en'
-            ? '⚠️ Sorry, could not identify food in this photo. Please try sending a clearer picture!'
-            : '⚠️ Извините, не удалось распознать еду на этой фотографии. Попробуйте сделать более чёткий снимок!';
+            ? '⚠️ Sorry, could not identify food in this photo. Please send a clearer picture!'
+            : '⚠️ Извините, на фото не обнаружена еда или не удалось её распознать. Попробуйте сделать более чёткий снимок!';
+
+      if (responseMsg && typeof responseMsg === 'string' && !responseMsg.includes('AI_')) {
+        errText = `⚠️ ${responseMsg}`;
+      }
       await this.sendCustomMessage(chatId, errText);
     }
   }

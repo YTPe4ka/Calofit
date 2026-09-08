@@ -79,8 +79,15 @@ export default function AnalyzePage() {
     },
     onError: (err: any) => {
       console.error('[Food Analysis Error]:', err);
-      const serverMessage = err?.response?.data?.message || err?.message || 'Ошибка при анализе';
-      toast.error(`Ошибка анализа: ${serverMessage}`, { duration: 6000 });
+      const serverMessage =
+        err?.response?.data?.message ||
+        err?.message ||
+        (locale === 'ru'
+          ? 'Ошибка при анализе'
+          : locale === 'en'
+            ? 'Analysis error'
+            : 'Tahlilda xatolik');
+      toast.error(typeof serverMessage === 'string' ? serverMessage : JSON.stringify(serverMessage), { duration: 6000 });
     },
   });
 
@@ -173,6 +180,7 @@ export default function AnalyzePage() {
 
     // Upload with compression
     setResult(null);
+    analyzeMutation.reset();
     try {
       const uploadFile = await compressImage(file);
       analyzeMutation.mutate(uploadFile);
@@ -235,8 +243,33 @@ export default function AnalyzePage() {
                 )}
               </div>
             )}
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFileSelect} />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onClick={(e) => {
+                (e.target as HTMLInputElement).value = '';
+              }}
+              onChange={handleFileSelect}
+            />
             
+            {/* Error Message when upload/analysis failed */}
+            {analyzeMutation.isError && (
+              <div className="mt-4 p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-start gap-2.5 text-left page-enter">
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <span>
+                  {typeof analyzeMutation.error?.response?.data?.message === 'string'
+                    ? analyzeMutation.error.response.data.message
+                    : (locale === 'ru'
+                        ? 'На фото не обнаружена еда. Пожалуйста, сделайте чёткое фото блюда.'
+                        : locale === 'en'
+                          ? 'No food detected. Please take a clear photo of your dish.'
+                          : 'Rasmdan ovqat aniqlanmadi. Iltimos, taom rasmini yuklang.')}
+                </span>
+              </div>
+            )}
+
             {/* Quick Retake Action if preview is shown */}
             {preview && !analyzeMutation.isPending && (
               <button
@@ -249,8 +282,8 @@ export default function AnalyzePage() {
             )}
           </div>
 
-          {/* Meal Type Selector (only after analyzing or when preview exists) */}
-          {preview && (
+          {/* Meal Type Selector (only after analyzing successfully) */}
+          {result && (
             <div className="glass rounded-3xl p-5 shadow-xl space-y-4 dark:bg-slate-900/50 dark:border-slate-800">
               <p className="text-xs font-bold text-gray-450 dark:text-slate-400 uppercase tracking-wider mb-2">{t('meal_time')}</p>
               <div className="grid grid-cols-4 gap-2">
