@@ -231,11 +231,11 @@ export default function LoginPage() {
   const handleTelegramClick = () => {
     const tg = (window as any).Telegram?.WebApp;
     // If inside real Telegram Mini App with user info, login directly
-    if (tg?.initDataUnsafe?.user?.id) {
+    if (tg?.initDataUnsafe?.user?.id || tg?.initData) {
       handleTelegramDirectAuth();
     } else {
-      // In external browser, open official Telegram bot to login securely
-      window.open('https://t.me/Calofit_app_bot?start=webapp', '_blank');
+      // In external browser, open instant login modal so user is not stuck in Telegram loop
+      setIsTgModalOpen(true);
     }
   };
 
@@ -566,6 +566,18 @@ export default function LoginPage() {
                 {isLoading ? <Loader2 size={16} className="animate-spin" /> : <UserCheck size={16} />}
                 <span>{locale === 'ru' ? 'Войти моментально' : 'Tezkor kirish'}</span>
               </button>
+
+              <div className="pt-2 border-t border-gray-150 dark:border-slate-800 text-center">
+                <a
+                  href="https://t.me/Calofit_app_bot?start=webapp"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1.5 font-semibold"
+                >
+                  <Smartphone size={13} />
+                  <span>{locale === 'ru' ? 'Или открыть в Telegram-боте' : locale === 'en' ? 'Or open in Telegram Bot' : 'Yoki Telegram botda ochish'}</span>
+                </a>
+              </div>
             </div>
           </div>
         </div>

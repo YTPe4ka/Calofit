@@ -62,7 +62,7 @@ const LANG_MAP = {
 
 export default function DashboardPage({ params }: { params: { locale: string } }) {
   const t = useTranslations('dashboard');
-  const { user, logout } = useAuth();
+  const { user, isLoading: authLoading, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
   const router = useRouter();
@@ -84,12 +84,13 @@ export default function DashboardPage({ params }: { params: { locale: string } }
       const { data } = await api.get('/dashboard');
       return data;
     },
+    enabled: !authLoading && (!!user || (typeof window !== 'undefined' && !!localStorage.getItem('accessToken'))),
     retry: 2,
   });
 
-  // Handle unauthorized / token expiration cleanly
+  // Handle unauthorized / token expiration cleanly (only after auth is ready)
   useEffect(() => {
-    if (error) {
+    if (!authLoading && error) {
       const status = (error as any)?.response?.status;
       if (status === 401) {
         localStorage.removeItem('accessToken');
@@ -98,7 +99,7 @@ export default function DashboardPage({ params }: { params: { locale: string } }
         window.location.href = `/${locale}/login`;
       }
     }
-  }, [error, locale]);
+  }, [error, authLoading, locale]);
 
   const [selectedMealLog, setSelectedMealLog] = useState<any | null>(null);
 

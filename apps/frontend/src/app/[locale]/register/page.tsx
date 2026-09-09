@@ -272,7 +272,7 @@ export default function RegisterPage() {
               type="button"
               onClick={async () => {
                 const tg = (window as any).Telegram?.WebApp;
-                if (tg?.initDataUnsafe?.user?.id) {
+                if (tg?.initDataUnsafe?.user?.id || tg?.initData) {
                   setIsLoading(true);
                   try {
                     const initData = tg?.initData || '';
@@ -285,7 +285,11 @@ export default function RegisterPage() {
                       setUser(data.user);
                     }
                     toast.success(locale === 'ru' ? 'Регистрация успешна!' : 'Muvaffaqiyatli ro‘yxatdan o‘tildi!');
-                    window.location.href = `/${locale}/dashboard`;
+                    if (data.user?.hasProfile) {
+                      window.location.href = `/${locale}/dashboard`;
+                    } else {
+                      window.location.href = `/${locale}/profile`;
+                    }
                   } catch (err: any) {
                     toast.error(err.response?.data?.message || 'Telegram auth failed');
                   } finally {

@@ -344,7 +344,20 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   // ─── Language Selection Menu on /start ──────────────────────
   private async sendLanguageSelectionMenu(chatId: number, firstName: string) {
-    const text = `Привет, ${firstName}! 👋 Добро пожаловать в **CaloFit**!\n\nIltimos, bot tilini tanlang:\nПожалуйста, выберите язык бота:\nPlease select the bot language:`;
+    const lang = this.getUserLang(chatId);
+    const text =
+      lang === 'uz'
+        ? `Salom, ${firstName}! 👋 **CaloFit** ilovasiga xush kelibsiz!\n\nIlovani ishga tushirish uchun pastdagi tugmani bosing yoki tilni tanlang:`
+        : lang === 'en'
+          ? `Hello, ${firstName}! 👋 Welcome to **CaloFit**!\n\nTap the button below to launch the app or select your language:`
+          : `Привет, ${firstName}! 👋 Добро пожаловать в **CaloFit**!\n\nНажмите кнопку ниже, чтобы запустить приложение, или выберите язык:`;
+
+    const appBtnText =
+      lang === 'uz'
+        ? '🚀 CaloFit App-ni ochish'
+        : lang === 'en'
+          ? '🚀 Open CaloFit App'
+          : '🚀 Открыть CaloFit App';
 
     await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
       method: 'POST',
@@ -355,9 +368,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: "🇺🇿 O'zbekcha", callback_data: 'set_lang_uz' }],
-            [{ text: '🇷🇺 Русский', callback_data: 'set_lang_ru' }],
-            [{ text: '🇬🇧 English', callback_data: 'set_lang_en' }],
+            [
+              {
+                text: appBtnText,
+                web_app: { url: this.webAppUrl },
+              },
+            ],
+            [
+              { text: "🇺🇿 O'zbekcha", callback_data: 'set_lang_uz' },
+              { text: '🇷🇺 Русский', callback_data: 'set_lang_ru' },
+              { text: '🇬🇧 English', callback_data: 'set_lang_en' },
+            ],
           ],
         },
       }),

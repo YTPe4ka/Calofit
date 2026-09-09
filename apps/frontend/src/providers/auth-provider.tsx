@@ -66,8 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Boshlang'ich auth holatini tekshirish
   useEffect(() => {
-    // 1. If running inside Telegram WebApp with initData, perform Telegram login
-    if (typeof window !== 'undefined') {
+    let isMounted = true;
+
+    async function initAuth() {
+      if (typeof window === 'undefined') return;
+
       const tg = (window as any).Telegram?.WebApp;
       if (tg) {
         try {
@@ -76,77 +79,94 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e) {
           console.warn('Telegram SDK initialization warning:', e);
         }
+      }
 
-        const initData = tg.initData || '';
-        const telegramUser = tg.initDataUnsafe?.user;
+      const initData = tg?.initData || '';
+      const telegramUser = tg?.initDataUnsafe?.user;
 
-        if (initData || (telegramUser && telegramUser.id)) {
-          setIsLoading(true);
+      // 1. If running inside Telegram WebApp with user credentials
+      if (initData || (telegramUser && telegramUser.id)) {
+        setIsLoading(true);
+        try {
+          const { data } = await api.post('/auth/telegram/login', {
+            initData,
+            telegramUser,
+          });
+
+          if (!isMounted) return;
+
+          if (data.accessToken) {
+            localStorage.setItem('accessToken', data.accessToken);
+          }
+          if (data.refreshToken) {
+            localStorage.setItem('refreshToken', data.refreshToken);
+          }
+          if (data.user) {
+            localStorage.setItem('user', JSON.stringify(data.user));
+            setUser(data.user);
+          }
+
+          const pathname = window.location.pathname;
+          if (pathname.includes('/login') || pathname.includes('/register')) {
+            if (data.user?.hasProfile) {
+              router.push('/dashboard');
+            } else {
+              router.push('/profile');
+            }
+          }
+        } catch (err: any) {
+          console.error('Telegram WebApp auto-login error:', err);
+          // Fallback to existing local storage session
+          const token = localStorage.getItem('accessToken');
+          const storedUser = localStorage.getItem('user');
+          if (token && storedUser && isMounted) {
+            try {
+              setUser(JSON.parse(storedUser));
+            } catch {
+              localStorage.removeItem('accessToken');
+              localStorage.removeItem('refreshToken');
+              localStorage.removeItem('user');
+            }
+          }
+        } finally {
+          if (isMounted) setIsLoading(false);
+        }
+        return;
+      }
+
+      // 2. Normal Web Browser check from localStorage
+      const token = localStorage.getItem('accessToken');
+      const storedUser = localStorage.getItem('user');
+
+      if (token && storedUser) {
+        try {
+          const parsed = JSON.parse(storedUser);
+          if (isMounted) setUser(parsed);
+          // Background sync to refresh latest subscription status
           api
-            .post('/auth/telegram/login', { initData, telegramUser })
+            .get('/auth/me')
             .then(({ data }) => {
-              if (data.accessToken) {
-                localStorage.setItem('accessToken', data.accessToken);
-              }
-              if (data.refreshToken) {
-                localStorage.setItem('refreshToken', data.refreshToken);
-              }
-              if (data.user) {
-                localStorage.setItem('user', JSON.stringify(data.user));
-                setUser(data.user);
-              }
-
-              if (data.user?.hasProfile) {
-                router.push('/dashboard');
-              } else {
-                router.push('/profile');
+              if (data && isMounted) {
+                setUser(data);
+                localStorage.setItem('user', JSON.stringify(data));
               }
             })
-            .catch((err) => {
-              console.error('Telegram WebApp auto-login error:', err);
-              // Fallback to local storage if network glitch
-              const token = localStorage.getItem('accessToken');
-              const storedUser = localStorage.getItem('user');
-              if (token && storedUser) {
-                try {
-                  setUser(JSON.parse(storedUser));
-                } catch {
-                  localStorage.removeItem('accessToken');
-                  localStorage.removeItem('refreshToken');
-                  localStorage.removeItem('user');
-                }
-              }
-            })
-            .finally(() => {
-              setIsLoading(false);
-            });
-          return;
+            .catch(() => {});
+        } catch {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
         }
       }
+
+      if (isMounted) setIsLoading(false);
     }
 
-    // 2. Normal Web Browser check
-    const token = localStorage.getItem('accessToken');
-    const storedUser = localStorage.getItem('user');
+    initAuth();
 
-    if (token && storedUser) {
-      try {
-        const parsed = JSON.parse(storedUser);
-        setUser(parsed);
-        // Background sync to refresh latest subscription status
-        api.get('/auth/me').then(({ data }) => {
-          if (data) {
-            setUser(data);
-            localStorage.setItem('user', JSON.stringify(data));
-          }
-        }).catch(() => {});
-      } catch {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-      }
-    }
-    setIsLoading(false);
+    return () => {
+      isMounted = false;
+    };
   }, [router]);
 
   const login = useCallback(
