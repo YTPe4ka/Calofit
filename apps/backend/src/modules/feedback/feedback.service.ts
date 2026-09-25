@@ -7,7 +7,7 @@ export class FeedbackService {
   private readonly logger = new Logger(FeedbackService.name);
 
   // Telegram configurations directly from request
-  private readonly botToken = '8941389947:AAGTF_E6FSK3iWJmD5C2aCUB32KENsiBaxk';
+  private readonly botToken = '8941389947:AAH2nwLGCuJMbRynEVSz7PyOOO5bXg_XKlU';
   private readonly chatId = '7162831196';
 
   constructor(private prisma: PrismaService) {}

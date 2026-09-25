@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
 import { api } from '@/lib/api';
@@ -28,6 +29,25 @@ export interface User {
   daysRemaining?: number;
 }
 
+export type AppPlatform = 'tg_mobile' | 'tg_desktop' | 'web_mobile' | 'web_desktop';
+
+// ─── Platform Detection ─────────────────────────────────────
+function detectPlatform(): AppPlatform {
+  if (typeof window === 'undefined') return 'web_desktop';
+
+  const tg = (window as any).Telegram?.WebApp;
+  const hasTelegramSDK = !!(tg?.initData || tg?.initDataUnsafe?.user?.id);
+  const screenWidth = window.innerWidth || window.screen?.width || 1024;
+
+  // Mobile threshold: <= 768px (standard tablet/phone breakpoint)
+  const isMobileScreen = screenWidth <= 768;
+
+  if (hasTelegramSDK) {
+    return isMobileScreen ? 'tg_mobile' : 'tg_desktop';
+  }
+  return isMobileScreen ? 'web_mobile' : 'web_desktop';
+}
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
@@ -36,6 +56,8 @@ interface AuthContextType {
   isTrialActive: boolean;
   isSubscriptionActive: boolean;
   daysRemaining: number;
+  platform: AppPlatform;
+  isTelegramWebApp: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<{ isEmailVerified: boolean } | void>;
   logout: () => Promise<void>;
@@ -48,7 +70,20 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [platform, setPlatform] = useState<AppPlatform>('web_desktop');
   const router = useRouter();
+
+  // Detect platform on mount
+  useEffect(() => {
+    setPlatform(detectPlatform());
+
+    // Re-detect on resize (e.g. desktop TG window resized)
+    const handleResize = () => setPlatform(detectPlatform());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isTelegramWebApp = platform === 'tg_mobile' || platform === 'tg_desktop';
 
   const refreshSession = useCallback(async (): Promise<User | null> => {
     try {
@@ -246,6 +281,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isTrialActive,
         isSubscriptionActive,
         daysRemaining,
+        platform,
+        isTelegramWebApp,
         login,
         register,
         logout,

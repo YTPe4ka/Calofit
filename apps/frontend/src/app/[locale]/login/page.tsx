@@ -26,7 +26,7 @@ export default function LoginPage() {
   const { theme, toggleTheme } = useTheme();
   const [langOpen, setLangOpen] = useState(false);
 
-  const { login, setUser } = useAuth();
+  const { login, setUser, platform, isTelegramWebApp } = useAuth();
   
   // Instant direct redirect if session exists in localStorage to prevent loading flash
   useEffect(() => {
@@ -394,6 +394,53 @@ export default function LoginPage() {
 
         {/* Form Container */}
         <div className="glass rounded-2xl p-6 shadow-xl space-y-5 dark:bg-slate-900/50 dark:border-slate-800">
+
+          {/* Platform-Aware Telegram Banner for web users */}
+          {platform === 'web_mobile' && (
+            <a
+              href="https://t.me/Calofit_app_bot?start=webapp"
+              className="flex items-center gap-3 p-4 rounded-xl bg-sky-50 dark:bg-sky-950/20 border border-sky-200/50 dark:border-sky-900/30 hover:bg-sky-100 dark:hover:bg-sky-950/30 transition-all group"
+            >
+              <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center shadow-md shadow-sky-500/25">
+                <Send size={18} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-sky-700 dark:text-sky-300">
+                  {locale === 'ru' ? '🚀 Мгновенный вход через Telegram' : locale === 'en' ? '🚀 Instant login via Telegram' : '🚀 Telegram orqali tezkor kirish'}
+                </p>
+                <p className="text-[10px] text-sky-600/70 dark:text-sky-400/60 mt-0.5">
+                  {locale === 'ru' ? 'Откройте в Telegram — вход в 1 клик без пароля' : locale === 'en' ? 'Open in Telegram — 1-click passwordless login' : 'Telegram-da oching — 1 bosishda parolsiz kirish'}
+                </p>
+              </div>
+              <ChevronDown size={16} className="text-sky-500 -rotate-90 group-hover:translate-x-0.5 transition-transform" />
+            </a>
+          )}
+          {platform === 'web_desktop' && (
+            <div className="p-4 rounded-xl bg-sky-50 dark:bg-sky-950/20 border border-sky-200/50 dark:border-sky-900/30">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center shadow-md shadow-sky-500/25">
+                  <Smartphone size={18} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-sky-700 dark:text-sky-300">
+                    {locale === 'ru' ? '📱 Быстрее через Telegram' : locale === 'en' ? '📱 Faster via Telegram' : '📱 Telegram orqali tezroq'}
+                  </p>
+                  <p className="text-[10px] text-sky-600/70 dark:text-sky-400/60 mt-0.5">
+                    {locale === 'ru' ? 'Откройте бота на телефоне для мгновенного входа:' : locale === 'en' ? 'Open the bot on your phone for instant login:' : 'Tezkor kirish uchun botni telefoningizda oching:'}
+                  </p>
+                  <a
+                    href="https://t.me/Calofit_app_bot?start=webapp"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg bg-sky-500 text-white text-[10px] font-bold hover:bg-sky-600 transition-colors shadow-sm"
+                  >
+                    <Send size={12} />
+                    t.me/Calofit_app_bot
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* Warning Prompt: Email not verified */}
           {showVerifyPrompt && (

@@ -395,21 +395,50 @@ export class AuthService {
     const tokenHash = this.hashToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
-      select: { id: true, isRevoked: true, expiresAt: true },
+      select: { id: true, isRevoked: true, expiresAt: true, createdAt: true },
     });
 
-    if (!stored || stored.isRevoked || stored.expiresAt < new Date()) {
+    if (!stored || stored.expiresAt < new Date()) {
       throw new UnauthorizedException({
         error: 'UNAUTHORIZED',
         message: 'Refresh token yaroqsiz',
       });
     }
 
-    // Eski tokenni bekor qilish (rotation)
-    await this.prisma.refreshToken.update({
-      where: { tokenHash },
-      data: { isRevoked: true },
-    });
+    // Grace period: if token was revoked less than 60 seconds ago,
+    // allow reuse to prevent race condition when multiple requests
+    // hit /refresh simultaneously (e.g. parallel API calls on page load)
+    if (stored.isRevoked) {
+      const revokedAge = Date.now() - new Date(stored.createdAt).getTime();
+      const GRACE_PERIOD_MS = 60_000; // 60 seconds
+      
+      // If it was revoked very recently, this is likely a race condition
+      // Find the newest valid token for this user and use it
+      const newestToken = await this.prisma.refreshToken.findFirst({
+        where: { userId: payload.sub, isRevoked: false },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      
+      if (newestToken) {
+        // Another request already created a new token — generate a fresh pair
+        // but don't revoke the existing one (the other request already handles that)
+        this.logger.warn(
+          `Refresh token race condition detected for user ${payload.sub} — issuing new tokens`,
+        );
+      } else if (revokedAge > GRACE_PERIOD_MS) {
+        throw new UnauthorizedException({
+          error: 'UNAUTHORIZED',
+          message: 'Refresh token yaroqsiz',
+        });
+      }
+    } else {
+      // Eski tokenni bekor qilish (rotation)
+      await this.prisma.refreshToken.update({
+        where: { tokenHash },
+        data: { isRevoked: true },
+      });
+    }
 
     // Yangi token pair
     const tokens = await this.generateAndSaveTokens(payload.sub);

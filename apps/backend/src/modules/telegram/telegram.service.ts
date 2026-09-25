@@ -114,7 +114,7 @@ const EVENING_SUMMARY_PHRASES: Record<SupportedLang, string[]> = {
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramService.name);
   private botToken: string;
-  private webAppUrl: string;
+  private webAppBaseUrl: string;
   private isPolling = false;
   private lastUpdateId = 0;
 
@@ -130,9 +130,18 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     this.botToken =
       this.config.get<string>('TELEGRAM_BOT_TOKEN') ||
       '8838776318:AAEm4AqkHfKmVDj6vVdOyF1k_w974YyL1jU';
-    this.webAppUrl =
+    // Store base URL without locale path — locale is appended dynamically per user
+    const rawUrl =
       this.config.get<string>('TELEGRAM_WEBAPP_URL') ||
       'https://calofit-liart.vercel.app/ru/dashboard';
+    // Strip any trailing locale/path like /ru/dashboard to get base URL
+    this.webAppBaseUrl = rawUrl.replace(/\/(uz|ru|en)(\/.*)?$/, '');
+  }
+
+  // ─── Dynamic WebApp URL per User Language ────────────────────
+  private getWebAppUrl(chatId?: number): string {
+    const lang = chatId ? this.getUserLang(chatId) : 'ru';
+    return `${this.webAppBaseUrl}/${lang}/dashboard`;
   }
 
   async onModuleInit() {
@@ -205,7 +214,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   // ─── Setup Bot Menu Button & Commands ───────────────────────
   private async setupBotCommandsAndMenu() {
     try {
-      // 1. Set Chat Menu Button to open WebApp
+      // 1. Set Chat Menu Button to open WebApp (default locale)
       await fetch(
         `https://api.telegram.org/bot${this.botToken}/setChatMenuButton`,
         {
@@ -215,13 +224,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
             menu_button: {
               type: 'web_app',
               text: '📱 CaloFit',
-              web_app: { url: this.webAppUrl },
+              web_app: { url: this.getWebAppUrl() },
             },
           }),
         },
       );
 
-      // 2. Set Bot Commands
+      // 2. Set Bot Commands — comprehensive list
       await fetch(
         `https://api.telegram.org/bot${this.botToken}/setMyCommands`,
         {
@@ -229,16 +238,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             commands: [
-              {
-                command: 'start',
-                description: '🚀 Start bot & choose language / Boshlash',
-              },
-              {
-                command: 'lang',
-                description: "🌐 Change language / Tilni o'zgartirish",
-              },
-              { command: 'app', description: '📱 Open CaloFit WebApp' },
-              { command: 'remind', description: '🔔 Food reminder / Напомнить' },
+              { command: 'start', description: '🚀 Start / Boshlash / Начать' },
+              { command: 'app', description: '📱 Open CaloFit App' },
+              { command: 'lang', description: "🌐 Til / Язык / Language" },
+              { command: 'help', description: '❓ Yordam / Помощь / Help' },
+              { command: 'profile', description: '👤 Profil / Профиль / Profile' },
+              { command: 'stats', description: '📊 Statistika / Статистика / Stats' },
+              { command: 'remind', description: '🔔 Eslatma / Напомнить / Remind' },
             ],
           }),
         },
@@ -310,15 +316,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     // 2. Text Commands
     if (message.text) {
       const text = message.text.trim();
-      if (
-        text.startsWith('/start') ||
-        text.startsWith('/lang') ||
-        text.startsWith('/language')
-      ) {
+      if (text.startsWith('/start')) {
         await this.sendLanguageSelectionMenu(
           chatId,
           message.from?.first_name || 'Друг',
         );
+      } else if (text.startsWith('/lang') || text.startsWith('/language')) {
+        await this.sendLanguageOnlyMenu(chatId);
+      } else if (text.startsWith('/help')) {
+        await this.sendHelpMessage(chatId);
+      } else if (text.startsWith('/profile')) {
+        await this.sendWebAppPage(chatId, 'profile');
+      } else if (text.startsWith('/stats')) {
+        await this.sendWebAppPage(chatId, 'dashboard');
       } else if (text.startsWith('/app')) {
         await this.sendAppLauncherMessage(chatId);
       } else if (text.startsWith('/remind')) {
@@ -371,7 +381,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
             [
               {
                 text: appBtnText,
-                web_app: { url: this.webAppUrl },
+                web_app: { url: this.getWebAppUrl(chatId) },
               },
             ],
             [
@@ -398,7 +408,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query_id: cb.id }),
+          body: JSON.stringify({ callback_query_id: cb.id }),
         },
       );
     } catch {}
@@ -438,7 +448,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         text,
         parse_mode: 'Markdown',
         reply_markup: {
-          keyboard: [[{ text: buttonLabel, web_app: { url: this.webAppUrl } }]],
+          keyboard: [[{ text: buttonLabel, web_app: { url: this.getWebAppUrl(chatId) } }]],
           resize_keyboard: true,
         },
       }),
@@ -461,6 +471,138 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           : 'Нажми кнопку ниже, чтобы запустить приложение CaloFit 👇';
 
     await this.sendCustomMessage(chatId, text, label);
+  }
+
+  // ─── /lang — Standalone Language Selection ─────────────────
+  private async sendLanguageOnlyMenu(chatId: number) {
+    const lang = this.getUserLang(chatId);
+    const text =
+      lang === 'uz'
+        ? '🌐 **Tilni tanlang:**'
+        : lang === 'en'
+          ? '🌐 **Select your language:**'
+          : '🌐 **Выберите язык:**';
+
+    await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "🇺🇿 O'zbekcha", callback_data: 'set_lang_uz' },
+              { text: '🇷🇺 Русский', callback_data: 'set_lang_ru' },
+              { text: '🇬🇧 English', callback_data: 'set_lang_en' },
+            ],
+          ],
+        },
+      }),
+    });
+  }
+
+  // ─── /help — Feature Guide ────────────────────────────────
+  private async sendHelpMessage(chatId: number) {
+    const lang = this.getUserLang(chatId);
+
+    let helpText: string;
+    let appBtnLabel: string;
+
+    if (lang === 'uz') {
+      helpText =
+        `❓ **CaloFit yordam menyu**\n\n` +
+        `📱 /app — CaloFit ilovasini ochish\n` +
+        `🌐 /lang — Tilni o'zgartirish\n` +
+        `👤 /profile — Profilni ko'rish va tahrirlash\n` +
+        `📊 /stats — Bugungi kunlik statistika\n` +
+        `🔔 /remind — Ovqat eslatmasini olish\n\n` +
+        `📸 **Taom rasmini yuboring** — AI bir necha sekundda kaloriyalarni hisoblaydi!\n\n` +
+        `💡 Pastdagi 📱 CaloFit tugmasini ham istalgan vaqtda bosishingiz mumkin.`;
+      appBtnLabel = '📱 CaloFit-ni ochish';
+    } else if (lang === 'en') {
+      helpText =
+        `❓ **CaloFit Help Guide**\n\n` +
+        `📱 /app — Open CaloFit App\n` +
+        `🌐 /lang — Change language\n` +
+        `👤 /profile — View & edit your profile\n` +
+        `📊 /stats — Today's calorie statistics\n` +
+        `🔔 /remind — Get a meal reminder\n\n` +
+        `📸 **Send a food photo** — AI calculates calories in seconds!\n\n` +
+        `💡 You can also tap the 📱 CaloFit button below at any time.`;
+      appBtnLabel = '📱 Open CaloFit';
+    } else {
+      helpText =
+        `❓ **Меню помощи CaloFit**\n\n` +
+        `📱 /app — Открыть приложение CaloFit\n` +
+        `🌐 /lang — Сменить язык\n` +
+        `👤 /profile — Профиль и настройки\n` +
+        `📊 /stats — Статистика калорий за сегодня\n` +
+        `🔔 /remind — Напоминание о приёме пищи\n\n` +
+        `📸 **Отправьте фото еды** — ИИ рассчитает калории за секунды!\n\n` +
+        `💡 Вы также можете нажать кнопку 📱 CaloFit внизу в любое время.`;
+      appBtnLabel = '📱 Открыть CaloFit';
+    }
+
+    await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: helpText,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: appBtnLabel, web_app: { url: this.getWebAppUrl(chatId) } }],
+          ],
+        },
+      }),
+    });
+  }
+
+  // ─── /profile, /stats — Open WebApp at a specific page ────
+  private async sendWebAppPage(chatId: number, page: 'profile' | 'dashboard') {
+    const lang = this.getUserLang(chatId);
+    const pageUrl = `${this.webAppBaseUrl}/${lang}/${page}`;
+
+    let text: string;
+    let btnLabel: string;
+
+    if (page === 'profile') {
+      text =
+        lang === 'uz'
+          ? '👤 Profilingizni ko\'rish va tahrirlash uchun pastdagi tugmani bosing:'
+          : lang === 'en'
+            ? '👤 Tap below to view and edit your profile:'
+            : '👤 Нажмите ниже, чтобы посмотреть и изменить свой профиль:';
+      btnLabel =
+        lang === 'uz' ? '👤 Profilni ochish' : lang === 'en' ? '👤 Open Profile' : '👤 Открыть профиль';
+    } else {
+      text =
+        lang === 'uz'
+          ? '📊 Bugungi kunlik statistikangizni ko\'ring:'
+          : lang === 'en'
+            ? '📊 View your daily calorie statistics:'
+            : '📊 Посмотрите статистику калорий за сегодня:';
+      btnLabel =
+        lang === 'uz' ? '📊 Statistikani ochish' : lang === 'en' ? '📊 Open Stats' : '📊 Открыть статистику';
+    }
+
+    await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: btnLabel, web_app: { url: pageUrl } }],
+          ],
+        },
+      }),
+    });
   }
 
   // ─── Send Custom Message with WebApp Inline Button ──────────
@@ -487,7 +629,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: label, web_app: { url: this.webAppUrl } }],
+            [{ text: label, web_app: { url: this.getWebAppUrl(chatId) } }],
           ],
         },
       }),
@@ -555,7 +697,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
                       : lang === 'en'
                         ? '📱 Open Log'
                         : '📱 Открыть дневник',
-                  web_app: { url: this.webAppUrl },
+                  web_app: { url: this.getWebAppUrl(chatId) },
                 },
               ],
             ],

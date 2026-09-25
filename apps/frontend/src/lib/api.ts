@@ -71,7 +71,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// ─── Response Interceptor: 401 Silent Refresh ────────
+// ─── Response Interceptor: 401 Silent Refresh with Telegram re-login fallback ────────
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (token: string) => void;
@@ -89,12 +89,37 @@ const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue = [];
 };
 
+// Try to re-authenticate via Telegram SDK if available
+async function tryTelegramReLogin(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  const tg = (window as any).Telegram?.WebApp;
+  const tgUser = tg?.initDataUnsafe?.user;
+  if (!tgUser?.id && !tg?.initData) return null;
+
+  try {
+    const { data } = await axios.post(`${getApiBaseUrl()}/auth/telegram/login`, {
+      initData: tg.initData || '',
+      telegramUser: tgUser,
+    });
+
+    if (data.accessToken) {
+      localStorage.setItem('accessToken', data.accessToken);
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+      if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+      return data.accessToken;
+    }
+  } catch {
+    // Telegram re-login failed — will fall through to redirect
+  }
+  return null;
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // If 401 on refresh or login endpoint — clear session quietly
+    // If 401 on refresh or login endpoint — clear session quietly (don't loop)
     if (
       error.response?.status === 401 &&
       (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/telegram/login'))
@@ -107,8 +132,9 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Other 401s — attempt graceful refresh
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Other 401s — attempt graceful refresh (max 2 retries to prevent infinite loops)
+    const retryCount = originalRequest._retryCount || 0;
+    if (error.response?.status === 401 && retryCount < 2) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -118,41 +144,55 @@ api.interceptors.response.use(
         });
       }
 
-      originalRequest._retry = true;
+      originalRequest._retryCount = retryCount + 1;
       isRefreshing = true;
 
       try {
+        // Step 1: Try normal refresh token rotation
         const storedRefresh = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
-        const { data } = await api.post('/auth/refresh', {
-          refreshToken: storedRefresh || undefined,
-        });
+        if (storedRefresh) {
+          try {
+            const { data } = await api.post('/auth/refresh', {
+              refreshToken: storedRefresh,
+            });
 
-        const newToken = data.accessToken;
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('accessToken', newToken);
-          if (data.refreshToken) {
-            localStorage.setItem('refreshToken', data.refreshToken);
-          }
-          if (data.user) {
-            localStorage.setItem('user', JSON.stringify(data.user));
+            const newToken = data.accessToken;
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('accessToken', newToken);
+              if (data.refreshToken) {
+                localStorage.setItem('refreshToken', data.refreshToken);
+              }
+              if (data.user) {
+                localStorage.setItem('user', JSON.stringify(data.user));
+              }
+            }
+
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            processQueue(null, newToken);
+            return api(originalRequest);
+          } catch {
+            // Refresh failed — try Telegram re-login next
           }
         }
 
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        processQueue(null, newToken);
-        return api(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-        if (typeof window !== 'undefined') {
-          if (refreshError && (refreshError as any).response?.status === 401) {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('user');
-            const locale = window.location.pathname.split('/')[1] || 'ru';
-            window.location.href = `/${locale}/login`;
-          }
+        // Step 2: Try Telegram WebApp re-login (if inside TG)
+        const tgToken = await tryTelegramReLogin();
+        if (tgToken) {
+          originalRequest.headers.Authorization = `Bearer ${tgToken}`;
+          processQueue(null, tgToken);
+          return api(originalRequest);
         }
-        return Promise.reject(refreshError);
+
+        // Step 3: All re-auth methods failed — clear session and redirect
+        processQueue(new Error('All re-auth methods failed'), null);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+          const locale = window.location.pathname.split('/')[1] || 'ru';
+          window.location.href = `/${locale}/login`;
+        }
+        return Promise.reject(error);
       } finally {
         isRefreshing = false;
       }
