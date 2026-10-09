@@ -119,6 +119,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private lastUpdateId = 0;
 
   private activeChatIds: Set<number> = new Set();
+  private mutedChatIds: Set<number> = new Set();
   private userLanguages: Map<number, SupportedLang> = new Map();
   private lastPhraseIndices: Record<string, number> = {};
 
@@ -129,7 +130,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   ) {
     this.botToken =
       this.config.get<string>('TELEGRAM_BOT_TOKEN') ||
-      '8838776318:AAEm4AqkHfKmVDj6vVdOyF1k_w974YyL1jU';
+      '8838776318:AAH0rDl8PJxjvGHlmuEoDhevWouUN5kzU-c';
     // Store base URL without locale path — locale is appended dynamically per user
     const rawUrl =
       this.config.get<string>('TELEGRAM_WEBAPP_URL') ||
@@ -238,13 +239,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             commands: [
-              { command: 'start', description: '🚀 Start / Boshlash / Начать' },
-              { command: 'app', description: '📱 Open CaloFit App' },
-              { command: 'lang', description: "🌐 Til / Язык / Language" },
-              { command: 'help', description: '❓ Yordam / Помощь / Help' },
-              { command: 'profile', description: '👤 Profil / Профиль / Profile' },
-              { command: 'stats', description: '📊 Statistika / Статистика / Stats' },
-              { command: 'remind', description: '🔔 Eslatma / Напомнить / Remind' },
+              { command: 'start', description: '🚀 Главное меню / Boshlash' },
+              { command: 'app', description: '📱 Открыть CaloFit / Ilovani ochish' },
+              { command: 'notify', description: '🔔 Уведомления: Вкл / Выкл' },
+              { command: 'lang', description: '🌐 Язык / Til / Language' },
+              { command: 'remind', description: '⏰ Тестовое напоминание' },
+              { command: 'profile', description: '👤 Мой профиль / Profil' },
+              { command: 'stats', description: '📊 Статистика / Stats' },
+              { command: 'help', description: '❓ Помощь / Yordam' },
             ],
           }),
         },
@@ -316,11 +318,37 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     // 2. Text Commands
     if (message.text) {
       const text = message.text.trim();
-      if (text.startsWith('/start')) {
+      if (text.startsWith('/start') || text.startsWith('/menu')) {
         await this.sendLanguageSelectionMenu(
           chatId,
           message.from?.first_name || 'Друг',
         );
+      } else if (text.startsWith('/notify_off') || text.startsWith('/mute')) {
+        this.mutedChatIds.add(chatId);
+        const lang = this.getUserLang(chatId);
+        const msg =
+          lang === 'uz'
+            ? "🔕 Eslatmalar o'chirildi! Qayta yoqish uchun /notify yozing."
+            : lang === 'en'
+              ? '🔕 Reminders turned off! Type /notify to turn back on.'
+              : '🔕 Уведомления выключены! Чтобы включить их снова, отправьте /notify.';
+        await this.sendCustomMessage(chatId, msg);
+      } else if (text.startsWith('/notify_on') || text.startsWith('/unmute')) {
+        this.mutedChatIds.delete(chatId);
+        const lang = this.getUserLang(chatId);
+        const msg =
+          lang === 'uz'
+            ? '🔔 Eslatmalar yoqildi! CaloFit ovqatlanishni eslatib turadi.'
+            : lang === 'en'
+              ? '🔔 Reminders turned on! CaloFit will gently remind you to log meals.'
+              : '🔔 Уведомления включены! CaloFit будет мягко напоминать вам о питании и воде.';
+        await this.sendCustomMessage(chatId, msg);
+      } else if (
+        text.startsWith('/notify') ||
+        text.startsWith('/notifications') ||
+        text.startsWith('/reminders')
+      ) {
+        await this.sendNotificationsMenu(chatId);
       } else if (text.startsWith('/lang') || text.startsWith('/language')) {
         await this.sendLanguageOnlyMenu(chatId);
       } else if (text.startsWith('/help')) {
@@ -352,15 +380,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // ─── Language Selection Menu on /start ──────────────────────
+  // ─── Language & Main Menu on /start ─────────────────────────
   private async sendLanguageSelectionMenu(chatId: number, firstName: string) {
     const lang = this.getUserLang(chatId);
+    const isMuted = this.mutedChatIds.has(chatId);
     const text =
       lang === 'uz'
-        ? `Salom, ${firstName}! 👋 **CaloFit** ilovasiga xush kelibsiz!\n\nIlovani ishga tushirish uchun pastdagi tugmani bosing yoki tilni tanlang:`
+        ? `Salom, ${firstName}! 👋 **CaloFit** ilovasiga xush kelibsiz!\n\nIlovani ishga tushirish uchun pastdagi tugmani bosing yoki til va eslatmalarni sozlang:`
         : lang === 'en'
-          ? `Hello, ${firstName}! 👋 Welcome to **CaloFit**!\n\nTap the button below to launch the app or select your language:`
-          : `Привет, ${firstName}! 👋 Добро пожаловать в **CaloFit**!\n\nНажмите кнопку ниже, чтобы запустить приложение, или выберите язык:`;
+          ? `Hello, ${firstName}! 👋 Welcome to **CaloFit**!\n\nTap the button below to launch the app or configure language and reminders:`
+          : `Привет, ${firstName}! 👋 Добро пожаловать в **CaloFit**!\n\nНажмите кнопку ниже, чтобы запустить приложение, или настройте язык и уведомления:`;
 
     const appBtnText =
       lang === 'uz'
@@ -368,6 +397,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         : lang === 'en'
           ? '🚀 Open CaloFit App'
           : '🚀 Открыть CaloFit App';
+
+    const notifyBtnText = isMuted
+      ? (lang === 'uz' ? '🔕 Eslatmalar: O\'chiq' : lang === 'en' ? '🔕 Reminders: OFF' : '🔕 Уведомления: Выкл')
+      : (lang === 'uz' ? '🔔 Eslatmalar: Yoqiq' : lang === 'en' ? '🔔 Reminders: ON' : '🔔 Уведомления: Вкл');
 
     await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
       method: 'POST',
@@ -385,9 +418,67 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
               },
             ],
             [
+              { text: notifyBtnText, callback_data: 'menu_notify' },
+            ],
+            [
               { text: "🇺🇿 O'zbekcha", callback_data: 'set_lang_uz' },
               { text: '🇷🇺 Русский', callback_data: 'set_lang_ru' },
               { text: '🇬🇧 English', callback_data: 'set_lang_en' },
+            ],
+          ],
+        },
+      }),
+    });
+  }
+
+  // ─── Notification Settings Menu (/notify) ───────────────────
+  private async sendNotificationsMenu(chatId: number) {
+    const lang = this.getUserLang(chatId);
+    const isMuted = this.mutedChatIds.has(chatId);
+
+    let text = '';
+    let toggleBtnText = '';
+    let testBtnText = '';
+    let backBtnText = '';
+
+    if (lang === 'uz') {
+      text = `🔔 **Eslatmalar sozlamalari**\n\nHozirgi holat: ${isMuted ? "🔕 **O'chirilgan** (Sizga eslatmalar kelmaydi)" : "🔔 **Yoqilgan** (Ertalab, tushlik, kechki ovqat vaqti eslatiladi)"}\n\nQuyidagi tugmalar orqali xabarlarni yoqishingiz yoki o'chirishingiz mumkin:`;
+      toggleBtnText = isMuted ? "🔔 Eslatmalarni yoqish" : "🔕 Eslatmalarni o'chirish";
+      testBtnText = "⏰ Sinov eslatmasi";
+      backBtnText = "📱 Ilovani ochish";
+    } else if (lang === 'en') {
+      text = `🔔 **Notification Settings**\n\nCurrent status: ${isMuted ? "🔕 **Disabled** (You will not receive meal reminders)" : "🔔 **Enabled** (Morning, lunch, snack, dinner reminders)"}\n\nYou can enable or mute reminders using the buttons below:`;
+      toggleBtnText = isMuted ? "🔔 Turn ON Reminders" : "🔕 Turn OFF Reminders";
+      testBtnText = "⏰ Test Reminder";
+      backBtnText = "📱 Open App";
+    } else {
+      text = `🔔 **Настройки напоминаний и уведомлений**\n\nТекущий статус: ${isMuted ? "🔕 **Выключены** (напоминания о приёмах пищи не приходят)" : "🔔 **Включены** (бот напоминает о завтраке, обеде, перекусе и ужине)"}\n\nВы можете в любой момент включить или выключить напоминания кнопками ниже:`;
+      toggleBtnText = isMuted ? "🔔 Включить напоминания" : "🔕 Выключить напоминания";
+      testBtnText = "⏰ Тестовое напоминание";
+      backBtnText = "📱 Открыть CaloFit";
+    }
+
+    const callbackData = isMuted ? 'toggle_notify_on' : 'toggle_notify_off';
+
+    await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: toggleBtnText, callback_data: callbackData }],
+            [
+              { text: testBtnText, callback_data: 'send_test_remind' },
+              { text: '🌐 Til / Язык', callback_data: 'menu_lang' },
+            ],
+            [
+              {
+                text: backBtnText,
+                web_app: { url: this.getWebAppUrl(chatId) },
+              },
             ],
           ],
         },
@@ -413,11 +504,37 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       );
     } catch {}
 
+    const lang = this.getUserLang(chatId);
+
     if (data.startsWith('set_lang_')) {
       const selectedLang = data.replace('set_lang_', '') as SupportedLang;
       this.userLanguages.set(chatId, selectedLang);
       await this.persistSubscriber(chatId, cb.from, selectedLang);
       await this.sendLanguageConfirmedMessage(chatId, selectedLang);
+    } else if (data === 'toggle_notify_off') {
+      this.mutedChatIds.add(chatId);
+      const msg =
+        lang === 'uz'
+          ? "🔕 **Eslatmalar muvaffaqiyatli o'chirildi!**\nSizga avtomatik eslatmalar kelmaydi. Qayta yoqish uchun /notify yozing."
+          : lang === 'en'
+            ? '🔕 **Reminders disabled!**\nYou will no longer receive automated notifications. Type /notify to re-enable.'
+            : '🔕 **Уведомления успешно выключены!**\nБот больше не будет присылать напоминания о еде и воде. Вы всегда можете включить их командой /notify.';
+      await this.sendCustomMessage(chatId, msg);
+    } else if (data === 'toggle_notify_on') {
+      this.mutedChatIds.delete(chatId);
+      const msg =
+        lang === 'uz'
+          ? '🔔 **Eslatmalar yoqildi!**\nCaloFit sizga vaqtida ovqatlanish va suv ichishni eslatib turadi.'
+          : lang === 'en'
+            ? '🔔 **Reminders enabled!**\nCaloFit will gently remind you to log meals and stay hydrated.'
+            : '🔔 **Уведомления включены!**\nCaloFit будет напоминать вам о приемах пищи и водном балансе.';
+      await this.sendCustomMessage(chatId, msg);
+    } else if (data === 'menu_notify') {
+      await this.sendNotificationsMenu(chatId);
+    } else if (data === 'menu_lang') {
+      await this.sendLanguageOnlyMenu(chatId);
+    } else if (data === 'send_test_remind') {
+      await this.sendRandomNotification(chatId, 'lunch');
     }
   }
 
@@ -514,10 +631,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       helpText =
         `❓ **CaloFit yordam menyu**\n\n` +
         `📱 /app — CaloFit ilovasini ochish\n` +
+        `🔔 /notify — Eslatmalarni sozlash (Yoqish/O'chirish)\n` +
         `🌐 /lang — Tilni o'zgartirish\n` +
         `👤 /profile — Profilni ko'rish va tahrirlash\n` +
         `📊 /stats — Bugungi kunlik statistika\n` +
-        `🔔 /remind — Ovqat eslatmasini olish\n\n` +
+        `⏰ /remind — Sinov eslatmasi\n\n` +
         `📸 **Taom rasmini yuboring** — AI bir necha sekundda kaloriyalarni hisoblaydi!\n\n` +
         `💡 Pastdagi 📱 CaloFit tugmasini ham istalgan vaqtda bosishingiz mumkin.`;
       appBtnLabel = '📱 CaloFit-ni ochish';
@@ -525,10 +643,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       helpText =
         `❓ **CaloFit Help Guide**\n\n` +
         `📱 /app — Open CaloFit App\n` +
+        `🔔 /notify — Notification Settings (Enable/Disable)\n` +
         `🌐 /lang — Change language\n` +
         `👤 /profile — View & edit your profile\n` +
         `📊 /stats — Today's calorie statistics\n` +
-        `🔔 /remind — Get a meal reminder\n\n` +
+        `⏰ /remind — Get a meal reminder\n\n` +
         `📸 **Send a food photo** — AI calculates calories in seconds!\n\n` +
         `💡 You can also tap the 📱 CaloFit button below at any time.`;
       appBtnLabel = '📱 Open CaloFit';
@@ -536,12 +655,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       helpText =
         `❓ **Меню помощи CaloFit**\n\n` +
         `📱 /app — Открыть приложение CaloFit\n` +
-        `🌐 /lang — Сменить язык\n` +
+        `🔔 /notify — Настройки уведомлений (Вкл/Выкл)\n` +
+        `🌐 /lang — Сменить язык интерфейса\n` +
         `👤 /profile — Профиль и настройки\n` +
         `📊 /stats — Статистика калорий за сегодня\n` +
-        `🔔 /remind — Напоминание о приёме пищи\n\n` +
+        `⏰ /remind — Тестовое напоминание\n\n` +
         `📸 **Отправьте фото еды** — ИИ рассчитает калории за секунды!\n\n` +
-        `💡 Вы также можете нажать кнопку 📱 CaloFit внизу в любое время.`;
+        `💡 Вы также можете нажать синюю кнопку меню внизу в любое время.`;
       appBtnLabel = '📱 Открыть CaloFit';
     }
 
@@ -773,6 +893,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     );
 
     for (const chatId of Array.from(this.activeChatIds)) {
+      if (this.mutedChatIds.has(chatId)) {
+        continue;
+      }
       try {
         const text = this.getRandomPhrase(chatId, category);
         await this.sendCustomMessage(chatId, text);

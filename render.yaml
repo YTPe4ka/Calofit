@@ -19,11 +19,15 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: JWT_ACCESS_EXPIRES_IN
-        value: 15m
+        value: 30d
       - key: JWT_REFRESH_EXPIRES_IN
-        value: 7d
+        value: 90d
       - key: AI_PROVIDER
-        value: openai
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
@@ -31,10 +35,18 @@ services:
       - key: STORAGE_PROVIDER
         value: supabase
       - key: SUPABASE_URL
-        value: https://cqrckyhucwmmtfqecauh.supabase.co
+        sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: SUPABASE_BUCKET
         value: food-images
       - key: CORS_ORIGINS
         value: '*'
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBAPP_URL
+        value: https://calofit-liart.vercel.app/ru/dashboard
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

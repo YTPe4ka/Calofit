@@ -547,7 +547,7 @@ export class AuthService {
   ) {
     const botToken =
       this.config.get<string>('TELEGRAM_BOT_TOKEN') ||
-      '8838776318:AAEm4AqkHfKmVDj6vVdOyF1k_w974YyL1jU';
+      '8838776318:AAH0rDl8PJxjvGHlmuEoDhevWouUN5kzU-c';
 
     let tgUser: {
       id: number | string;
@@ -644,19 +644,26 @@ export class AuthService {
 
     const trialEndsAt = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000); // 4 days free trial
 
-    // Find user strictly by telegramId first
+    // 1. Find user strictly by telegramId first
     let user = await this.prisma.user.findFirst({
       where: { telegramId: tgIdStr },
     });
 
-    // If not found by telegramId, check if there is an unlinked user with this email or username
-    if (!user && rawUsername) {
+    // 2. If not found by telegramId, search by email or username or legacy tgId
+    if (!user) {
+      const orConditions: any[] = [
+        { email: { equals: email.toLowerCase(), mode: 'insensitive' } },
+      ];
+      if (rawUsername) {
+        orConditions.push(
+          { telegramUsername: { equals: rawUsername, mode: 'insensitive' } },
+          { telegramId: `tg_${rawUsername.toLowerCase()}` },
+          { email: { equals: `tg_${rawUsername.toLowerCase()}@telegram.calofit.com`, mode: 'insensitive' } },
+        );
+      }
       user = await this.prisma.user.findFirst({
         where: {
-          OR: [
-            { telegramUsername: rawUsername, telegramId: null },
-            { email: email.toLowerCase(), telegramId: null },
-          ],
+          OR: orConditions,
         },
       });
     }
@@ -665,18 +672,43 @@ export class AuthService {
       const securePass = crypto.randomBytes(32).toString('hex');
       const passwordHash = await argon2.hash(securePass);
 
-      user = await this.prisma.user.create({
-        data: {
-          email: email.toLowerCase(),
-          passwordHash,
-          role: isAdmin ? 'ADMIN' : 'USER',
-          telegramId: tgIdStr,
-          telegramUsername: rawUsername,
-          telegramChatId: tgIdStr,
-          trialEndsAt,
-          isEmailVerified: true,
-        },
-      });
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            email: email.toLowerCase(),
+            passwordHash,
+            role: isAdmin ? 'ADMIN' : 'USER',
+            telegramId: tgIdStr,
+            telegramUsername: rawUsername,
+            telegramChatId: tgIdStr,
+            trialEndsAt,
+            isEmailVerified: true,
+          },
+        });
+      } catch (createErr: any) {
+        // If unique constraint violation or race condition, link to existing record
+        user = await this.prisma.user.findFirst({
+          where: {
+            OR: [
+              { email: email.toLowerCase() },
+              ...(rawUsername ? [{ telegramUsername: rawUsername }] : []),
+            ],
+          },
+        });
+        if (user) {
+          user = await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+              telegramId: tgIdStr,
+              telegramUsername: rawUsername || user.telegramUsername,
+              telegramChatId: tgIdStr,
+              role: isAdmin ? 'ADMIN' : user.role,
+            },
+          });
+        } else {
+          throw createErr;
+        }
+      }
     } else {
       // Update telegram fields and role if admin
       user = await this.prisma.user.update({
