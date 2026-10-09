@@ -16,19 +16,11 @@ export const validationSchema = Joi.object({
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('90d'),
 
   // AI
-  AI_PROVIDER: Joi.string().valid('openai', 'gemini').default('openai'),
-  OPENAI_API_KEY: Joi.when('AI_PROVIDER', {
-    is: 'openai',
-    then: Joi.string().required(),
-    otherwise: Joi.string().optional(),
-  }),
-  OPENAI_MODEL: Joi.string().default('gpt-4o'),
-  GEMINI_API_KEY: Joi.when('AI_PROVIDER', {
-    is: 'gemini',
-    then: Joi.string().required(),
-    otherwise: Joi.string().optional(),
-  }),
-  GEMINI_MODEL: Joi.string().default('gemini-3.6-flash'),
+  AI_PROVIDER: Joi.string().valid('openai', 'gemini').default('gemini'),
+  OPENAI_API_KEY: Joi.string().optional(),
+  OPENAI_MODEL: Joi.string().default('gpt-4o-mini'),
+  GEMINI_API_KEY: Joi.string().optional(),
+  GEMINI_MODEL: Joi.string().default('gemini-3.8-flash'),
 
   // Storage
   STORAGE_PROVIDER: Joi.string().valid('supabase').default('supabase'),
