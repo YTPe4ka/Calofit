@@ -6,10 +6,47 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { useRouter } from '@/i18n/routing';
-import { Upload, Camera, AlertTriangle, Check, Loader2, ArrowLeft, Sparkles } from 'lucide-react';
+import {
+  Upload,
+  Camera,
+  AlertTriangle,
+  Check,
+  Loader2,
+  ArrowLeft,
+  Sparkles,
+  Send,
+  Bot,
+  Copy,
+  CheckCheck,
+  MessageSquare,
+} from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/providers/auth-provider';
 import { SubscriptionPaywallModal } from '@/components/SubscriptionPaywallModal';
+
+const QUICK_QUESTIONS: Record<string, string[]> = {
+  ru: [
+    '🥗 Полезно ли это блюдо?',
+    '📉 Можно ли при похудении?',
+    '🌙 Можно ли на ночь?',
+    '🏋️ Подходит для набора массы?',
+    '🔄 Как сделать блюдо полезнее?',
+  ],
+  uz: [
+    '🥗 Bu taom foydalimi?',
+    '📉 Ozish paytida mumkinmi?',
+    '🌙 Kechqurun yesa bo‘ladimi?',
+    '🏋️ Mushak massasi uchun mosmi?',
+    '🔄 Qanday qilib foydaliroq qilish mumkin?',
+  ],
+  en: [
+    '🥗 Is this meal healthy?',
+    '📉 Good for weight loss?',
+    '🌙 Can I eat it at night?',
+    '🏋️ Good for muscle gain?',
+    '🔄 How to make it healthier?',
+  ],
+};
 
 interface AnalysisResult {
   analysisId: string;
@@ -54,6 +91,63 @@ export default function AnalyzePage() {
   const [editValues, setEditValues] = useState({
     foodName: '', portionSize: '', calories: 0, protein: 0, fat: 0, carbs: 0,
   });
+
+  // Ask AI about this meal state
+  const [customQuestion, setCustomQuestion] = useState('');
+  const [aiQuestion, setAiQuestion] = useState<string | null>(null);
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+  const [isAskingAi, setIsAskingAi] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleAskAi = async (questionText: string) => {
+    if (!questionText.trim() || isAskingAi || !result) return;
+
+    if (!hasAccess) {
+      setPaywallOpen(true);
+      return;
+    }
+
+    const trimmedQuestion = questionText.trim();
+    setAiQuestion(trimmedQuestion);
+    setAiAnswer(null);
+    setIsAskingAi(true);
+
+    try {
+      const mealContext = `Блюдо: ${editValues.foodName || result.nutrition.foodName}, порция: ${editValues.portionSize || result.nutrition.portionSize || 'стандартная'}, калории: ${editValues.calories} ккал, белки: ${editValues.protein}г, жиры: ${editValues.fat}г, углеводы: ${editValues.carbs}г, ингредиенты: ${(result.nutrition.ingredients || []).join(', ')}.`;
+
+      const { data } = await api.post<{ reply: string }>('/chat', {
+        message: trimmedQuestion,
+        mealContext,
+      });
+
+      setAiAnswer(data.reply);
+      setCustomQuestion('');
+    } catch {
+      toast.error(
+        locale === 'ru'
+          ? 'Не удалось получить ответ диетолога'
+          : locale === 'en'
+            ? 'Failed to get dietician answer'
+            : 'Dietolog javobini olishda xatolik',
+      );
+    } finally {
+      setIsAskingAi(false);
+    }
+  };
+
+  const handleCopyAnswer = () => {
+    if (!aiAnswer) return;
+    navigator.clipboard.writeText(aiAnswer);
+    setIsCopied(true);
+    toast.success(
+      locale === 'ru'
+        ? 'Ответ скопирован в буфер обмена'
+        : locale === 'en'
+          ? 'Copied to clipboard'
+          : 'Nusxalandi',
+    );
+    setTimeout(() => setIsCopied(false), 2000);
+  };
 
   // ─── Analyze Mutation ──────────────────────────────
   const analyzeMutation = useMutation({
@@ -180,6 +274,9 @@ export default function AnalyzePage() {
 
     // Upload with compression
     setResult(null);
+    setAiQuestion(null);
+    setAiAnswer(null);
+    setCustomQuestion('');
     analyzeMutation.reset();
     try {
       const uploadFile = await compressImage(file);
@@ -416,6 +513,155 @@ export default function AnalyzePage() {
                   </p>
                 </div>
               )}
+
+              {/* ─── Ask AI Dietitian about this Meal ─── */}
+              <div className="glass rounded-3xl p-6 shadow-xl space-y-4 bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent dark:from-slate-900/70 dark:to-slate-950/40 border border-emerald-500/25 dark:border-emerald-500/15 page-enter">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-gray-900 dark:text-white">
+                      {t('ask_ai_title')}
+                    </h3>
+                    <p className="text-[11px] text-gray-500 dark:text-slate-400 font-medium mt-0.5">
+                      {t('ask_ai_sub')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Preset Quick Question Chips */}
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">
+                    {locale === 'ru'
+                      ? 'Быстрые вопросы в 1 клик:'
+                      : locale === 'en'
+                        ? 'Quick 1-click questions:'
+                        : '1 bosishda tezkor savollar:'}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(QUICK_QUESTIONS[locale] || QUICK_QUESTIONS.ru).map((q, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleAskAi(q)}
+                        disabled={isAskingAi}
+                        className="px-3.5 py-2 rounded-xl text-xs font-bold border border-emerald-500/25 dark:border-emerald-500/20 bg-white/80 dark:bg-slate-900/80 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500 hover:text-white dark:hover:bg-emerald-600 dark:hover:text-white hover:border-emerald-500 transition-all shadow-sm hover:scale-105 active:scale-95 disabled:opacity-50 text-left"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Question Input */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (customQuestion.trim()) {
+                      handleAskAi(customQuestion.trim());
+                    }
+                  }}
+                  className="flex gap-2 pt-2"
+                >
+                  <input
+                    type="text"
+                    value={customQuestion}
+                    onChange={(e) => setCustomQuestion(e.target.value)}
+                    placeholder={t('ask_ai_placeholder')}
+                    disabled={isAskingAi}
+                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-xs font-medium focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all placeholder:text-gray-400 dark:placeholder:text-slate-500 disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isAskingAi || !customQuestion.trim()}
+                    className="px-4 py-3 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-md shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 flex items-center gap-1.5 shrink-0"
+                  >
+                    {isAskingAi ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <>
+                        <Send size={14} />
+                        <span>{t('ask_ai_submit')}</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                {/* Loading Indicator */}
+                {isAskingAi && (
+                  <div className="p-4 rounded-2xl bg-white/70 dark:bg-slate-900/70 border border-emerald-500/20 flex items-center gap-3 page-enter">
+                    <Loader2 size={18} className="text-emerald-500 animate-spin shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-gray-800 dark:text-slate-200">
+                        {t('ask_ai_loading')}
+                      </p>
+                      {aiQuestion && (
+                        <p className="text-[11px] text-gray-400 dark:text-slate-400 italic mt-0.5">
+                          «{aiQuestion}»
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Response Display */}
+                {aiAnswer && !isAskingAi && (
+                  <div className="p-5 rounded-2xl bg-white/95 dark:bg-slate-900/95 border border-emerald-500/30 dark:border-emerald-500/20 shadow-lg page-enter space-y-3">
+                    <div className="flex items-center justify-between border-b border-gray-150/60 dark:border-slate-800 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                          <Bot size={15} />
+                        </div>
+                        <span className="text-xs font-black text-gray-900 dark:text-white">
+                          {t('ask_ai_response_title')}
+                        </span>
+                        {aiQuestion && (
+                          <span className="hidden sm:inline text-[10px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full font-semibold border border-emerald-200/50 dark:border-emerald-800/40 truncate max-w-[200px]">
+                            {aiQuestion}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopyAnswer}
+                        className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 font-semibold px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                      >
+                        {isCopied ? (
+                          <>
+                            <CheckCheck size={13} className="text-emerald-500" />
+                            <span className="text-emerald-600 dark:text-emerald-400">
+                              {locale === 'ru' ? 'Скопировано' : locale === 'en' ? 'Copied' : 'Nusxalandi'}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={13} />
+                            <span>
+                              {locale === 'ru' ? 'Копировать' : locale === 'en' ? 'Copy' : 'Nusxa'}
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-gray-800 dark:text-slate-200 whitespace-pre-line leading-relaxed font-medium">
+                      {aiAnswer}
+                    </p>
+
+                    <div className="pt-2 border-t border-gray-100 dark:border-slate-800/80 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => router.push('/chat')}
+                        className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 flex items-center gap-1.5 transition-colors"
+                      >
+                        <MessageSquare size={13} />
+                        <span>{t('ask_ai_open_full_chat')}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
             </div>
           ) : (

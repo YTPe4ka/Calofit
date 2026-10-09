@@ -56,7 +56,18 @@
     "upload_another": "Boshqa rasm yuklash",
     "ingredients_title": "Tarkibi",
     "portion_title": "Vazn taqsimoti",
-    "dietician_advice_title": "AI Dietolog xulosasi"
+    "dietician_advice_title": "AI Dietolog xulosasi",
+    "ask_ai_title": "AI Dietologdan taom haqida so'rash",
+    "ask_ai_sub": "Tezkor javob: yeyish mumkinmi, foydalimi va maqsadingizga mosmi",
+    "ask_q_healthy": "🥗 Bu taom foydalimi?",
+    "ask_q_diet": "📉 Ozish paytida mumkinmi?",
+    "ask_q_night": "🌙 Kechqurun yesa bo'ladimi?",
+    "ask_q_muscle": "🏋️ Mushak massasi uchun mosmi?",
+    "ask_ai_placeholder": "Savol bering (masalan: kechki payt yesa bo'ladimi?)...",
+    "ask_ai_submit": "So'rash",
+    "ask_ai_loading": "Dietolog tahlil qilmoqda...",
+    "ask_ai_response_title": "Dietolog javobi",
+    "ask_ai_open_full_chat": "Dietolog bilan to'liq suhbatni ochish"
   },
   "profile": {
     "title": "Profil ma'lumotlari",

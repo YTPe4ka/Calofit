@@ -56,7 +56,18 @@
     "upload_another": "Upload another photo",
     "ingredients_title": "Ingredients",
     "portion_title": "Portion Breakdown",
-    "dietician_advice_title": "AI Dietician Advice"
+    "dietician_advice_title": "AI Dietician Advice",
+    "ask_ai_title": "Ask AI Dietitian about this dish",
+    "ask_ai_sub": "Instant answers: is it healthy, good for weight loss or muscle gain",
+    "ask_q_healthy": "🥗 Is this meal healthy?",
+    "ask_q_diet": "📉 Good for weight loss?",
+    "ask_q_night": "🌙 Can I eat it at night?",
+    "ask_q_muscle": "🏋️ Good for muscle gain?",
+    "ask_ai_placeholder": "Ask anything (e.g., can I eat on calorie deficit?)...",
+    "ask_ai_submit": "Ask",
+    "ask_ai_loading": "Dietitian is analyzing the meal...",
+    "ask_ai_response_title": "Dietitian Answer",
+    "ask_ai_open_full_chat": "Open full chat with Dietitian"
   },
   "profile": {
     "title": "User Profile",

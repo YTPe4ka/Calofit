@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiService } from '../ai/ai.service';
+import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 import * as fs from 'fs';
@@ -122,11 +123,25 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private mutedChatIds: Set<number> = new Set();
   private userLanguages: Map<number, SupportedLang> = new Map();
   private lastPhraseIndices: Record<string, number> = {};
+  private lastAnalyzedMeal: Map<
+    number,
+    {
+      foodName: string;
+      portionSize?: string;
+      calories: number;
+      protein: number;
+      fat: number;
+      carbs: number;
+      healthAdvice?: string;
+      timestamp: number;
+    }
+  > = new Map();
 
   constructor(
     private config: ConfigService,
     private aiService: AiService,
     private prisma: PrismaService,
+    private chatService: ChatService,
   ) {
     this.botToken =
       this.config.get<string>('TELEGRAM_BOT_TOKEN') ||
@@ -137,6 +152,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       'https://calofit-liart.vercel.app/ru/dashboard';
     // Strip any trailing locale/path like /ru/dashboard to get base URL
     this.webAppBaseUrl = rawUrl.replace(/\/(uz|ru|en)(\/.*)?$/, '');
+  }
+
+  private async sendChatAction(chatId: number, action = 'typing') {
+    try {
+      await fetch(
+        `https://api.telegram.org/bot${this.botToken}/sendChatAction`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, action }),
+        },
+      );
+    } catch {}
   }
 
   // ─── Dynamic WebApp URL per User Language ────────────────────
@@ -363,14 +391,57 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.sendRandomNotification(chatId, 'lunch');
       } else {
         const lang = this.getUserLang(chatId);
-        const promptText =
-          lang === 'uz'
-            ? `Salom, ${message.from?.first_name || ''}! 👋\nKaloriyalarigizni hisoblash yoki AI Dietolog bilan muloqot qilish uchun pastdagi tugmani bosing yoki taom rasmini yuboring! 📸`
-            : lang === 'en'
-              ? `Hello, ${message.from?.first_name || ''}! 👋\nTo calculate calories or talk to AI Dietician, tap the button below or send a meal photo! 📸`
-              : `Привет, ${message.from?.first_name || ''}! 👋\nЧтобы посчитать калории или спросить ИИ Диетолога — просто нажми кнопку ниже или отправь фото еды! 📸`;
+        await this.sendChatAction(chatId, 'typing');
 
-        await this.sendCustomMessage(chatId, promptText);
+        const recentMeal = this.lastAnalyzedMeal.get(chatId);
+        const hasRecentMeal =
+          recentMeal && Date.now() - recentMeal.timestamp < 60 * 60 * 1000;
+        const mealContext = hasRecentMeal
+          ? `Блюдо: ${recentMeal.foodName}, порция: ${recentMeal.portionSize || 'порция'}, калории: ${recentMeal.calories} ккал, белки: ${recentMeal.protein}г, жиры: ${recentMeal.fat}г, углеводы: ${recentMeal.carbs}г.`
+          : undefined;
+
+        try {
+          const reply = await this.chatService.getResponse({
+            message: text,
+            mealContext,
+          });
+
+          await fetch(
+            `https://api.telegram.org/bot${this.botToken}/sendMessage`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: reply,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text:
+                          lang === 'uz'
+                            ? '🚀 CaloFit App-ni ochish'
+                            : lang === 'en'
+                              ? '🚀 Open CaloFit App'
+                              : '🚀 Открыть CaloFit App',
+                        web_app: { url: this.getWebAppUrl(chatId) },
+                      },
+                    ],
+                  ],
+                },
+              }),
+            },
+          );
+        } catch {
+          const fallbackText =
+            lang === 'uz'
+              ? `Salom, ${message.from?.first_name || ''}! 👋\nKaloriyalarigizni hisoblash yoki AI Dietolog bilan muloqot qilish uchun pastdagi tugmani bosing yoki taom rasmini yuboring! 📸`
+              : lang === 'en'
+                ? `Hello, ${message.from?.first_name || ''}! 👋\nTo calculate calories or talk to AI Dietician, tap the button below or send a meal photo! 📸`
+                : `Привет, ${message.from?.first_name || ''}! 👋\nЧтобы посчитать калории или спросить ИИ Диетолога — просто нажми кнопку ниже или отправь фото еды! 📸`;
+          await this.sendCustomMessage(chatId, fallbackText);
+        }
       }
     }
 
@@ -579,6 +650,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await this.sendLanguageOnlyMenu(chatId);
     } else if (data === 'send_test_remind') {
       await this.sendRandomNotification(chatId, 'lunch');
+    } else if (data.startsWith('ask_meal:')) {
+      const type = data.replace('ask_meal:', '');
+      await this.handleAskMealQuery(chatId, type);
     }
   }
 
@@ -835,14 +909,37 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         lang,
       );
 
+      // Save to cache for quick Q&A
+      this.lastAnalyzedMeal.set(chatId, {
+        foodName: result.foodName,
+        portionSize: result.portionSize,
+        calories: result.calories,
+        protein: result.protein,
+        fat: result.fat,
+        carbs: result.carbs,
+        healthAdvice: result.healthAdvice || '',
+        timestamp: Date.now(),
+      });
+
       let msgText = '';
       if (lang === 'uz') {
-        msgText = `🥗 **Taom tahlili natijasi:**\n\n📌 **${result.foodName}**\n⚖️ Portsiya: ${result.portionSize}\n🔥 Kaloriya: **${result.calories} kkal**\n\n🔹 Oqsil: ${result.protein}g\n🔹 Yog': ${result.fat}g\n🔹 Uglevod: ${result.carbs}g\n\n💡 **Dietolog maslahati:**\n${result.healthAdvice || "Sog'lom taom!"}`;
+        msgText = `🥗 **Taom tahlili natijasi:**\n\n📌 **${result.foodName}**\n⚖️ Portsiya: ${result.portionSize}\n🔥 Kaloriya: **${result.calories} kkal**\n\n🔹 Oqsil: ${result.protein}g\n🔹 Yog': ${result.fat}g\n🔹 Uglevod: ${result.carbs}g\n\n💡 **Dietolog maslahati:**\n${result.healthAdvice || "Sog'lom taom!"}\n\n👇 *Quyidagi tugmalar orqali taom haqida tezkor savol bering:*`;
       } else if (lang === 'en') {
-        msgText = `🥗 **Meal Analysis Result:**\n\n📌 **${result.foodName}**\n⚖️ Portion: ${result.portionSize}\n🔥 Calories: **${result.calories} kcal**\n\n🔹 Protein: ${result.protein}g\n🔹 Fat: ${result.fat}g\n🔹 Carbs: ${result.carbs}g\n\n💡 **Dietician Advice:**\n${result.healthAdvice || 'Healthy meal!'}`;
+        msgText = `🥗 **Meal Analysis Result:**\n\n📌 **${result.foodName}**\n⚖️ Portion: ${result.portionSize}\n🔥 Calories: **${result.calories} kcal**\n\n🔹 Protein: ${result.protein}g\n🔹 Fat: ${result.fat}g\n🔹 Carbs: ${result.carbs}g\n\n💡 **Dietician Advice:**\n${result.healthAdvice || 'Healthy meal!'}\n\n👇 *Ask instant questions about this dish below:*`;
       } else {
-        msgText = `🥗 **Результат анализа блюда:**\n\n📌 **${result.foodName}**\n⚖️ Порция: ${result.portionSize}\n🔥 Калории: **${result.calories} ккал**\n\n🔹 Белки: ${result.protein}г\n🔹 Жиры: ${result.fat}г\n🔹 Углеводы: ${result.carbs}г\n\n💡 **Совет диетолога:**\n${result.healthAdvice || 'Сбалансированное блюдо!'}`;
+        msgText = `🥗 **Результат анализа блюда:**\n\n📌 **${result.foodName}**\n⚖️ Порция: ${result.portionSize}\n🔥 Калории: **${result.calories} ккал**\n\n🔹 Белки: ${result.protein}г\n🔹 Жиры: ${result.fat}г\n🔹 Углеводы: ${result.carbs}г\n\n💡 **Совет диетолога:**\n${result.healthAdvice || 'Сбалансированное блюдо!'}\n\n👇 *Задайте вопрос ИИ об этом блюде в 1 клик:*`;
       }
+
+      const qHealthy =
+        lang === 'uz' ? '🥗 Foydalimi?' : lang === 'en' ? '🥗 Is it healthy?' : '🥗 Полезно ли?';
+      const qDiet =
+        lang === 'uz' ? '📉 Ozishda mumkinmi?' : lang === 'en' ? '📉 For weight loss?' : '📉 При похудении?';
+      const qNight =
+        lang === 'uz' ? '🌙 Kechqurun yesa bo‘ladimi?' : lang === 'en' ? '🌙 Eat at night?' : '🌙 Можно на ночь?';
+      const qMuscle =
+        lang === 'uz' ? '🏋️ Massa uchun mosmi?' : lang === 'en' ? '🏋️ Muscle gain?' : '🏋️ Для набора массы?';
+      const appBtn =
+        lang === 'uz' ? '🚀 CaloFit App-ni ochish' : lang === 'en' ? '🚀 Open CaloFit App' : '🚀 Открыть CaloFit App';
 
       await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
         method: 'POST',
@@ -854,13 +951,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           reply_markup: {
             inline_keyboard: [
               [
+                { text: qHealthy, callback_data: 'ask_meal:healthy' },
+                { text: qDiet, callback_data: 'ask_meal:diet' },
+              ],
+              [
+                { text: qNight, callback_data: 'ask_meal:night' },
+                { text: qMuscle, callback_data: 'ask_meal:muscle' },
+              ],
+              [
                 {
-                  text:
-                    lang === 'uz'
-                      ? '📱 Kundalikni ochish'
-                      : lang === 'en'
-                        ? '📱 Open Log'
-                        : '📱 Открыть дневник',
+                  text: appBtn,
                   web_app: { url: this.getWebAppUrl(chatId) },
                 },
               ],
@@ -881,6 +981,104 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         errText = `⚠️ ${responseMsg}`;
       }
       await this.sendCustomMessage(chatId, errText);
+    }
+  }
+
+  // ─── Handle Direct Meal Questions from Inline Buttons ────────
+  private async handleAskMealQuery(chatId: number, type: string) {
+    const lang = this.getUserLang(chatId);
+    const meal = this.lastAnalyzedMeal.get(chatId);
+
+    let question = '';
+    if (type === 'healthy') {
+      question =
+        lang === 'uz'
+          ? 'Bu taom salomatlik va organizm uchun qanchalik foydali? Qanday afzalliklari bor?'
+          : lang === 'en'
+            ? 'How healthy is this dish for the body? What are the key benefits?'
+            : 'Насколько это блюдо полезно для организма и здоровья? В чем его главная польза?';
+    } else if (type === 'diet') {
+      question =
+        lang === 'uz'
+          ? "Bu taomni vazn yo'qotish (ozish) va kaloriya tanqisligi paytida iste'mol qilsa bo'ladimi?"
+          : lang === 'en'
+            ? 'Can I eat this dish for weight loss and calorie deficit diet? Any tips?'
+            : 'Можно ли есть это блюдо при похудении и сбросе веса? Не помешает ли дефициту калорий?';
+    } else if (type === 'night') {
+      question =
+        lang === 'uz'
+          ? "Bu taomni kechki ovqatga yoki yotishdan oldin yesa bo'ladimi? Uyqu va qomatga ta'siri qanday?"
+          : lang === 'en'
+            ? 'Can I eat this dish for dinner or late at night? How does it affect sleep and weight?'
+            : 'Можно ли есть это блюдо на ужин или на ночь? Как оно повлияет на сон и фигуру?';
+    } else if (type === 'muscle') {
+      question =
+        lang === 'uz'
+          ? "Bu taom mushak massasini oshirish va fitnes mashg'ulotlaridan keyin mos keladimi?"
+          : lang === 'en'
+            ? 'Is this dish suitable for muscle gain, protein intake, and post-workout?'
+            : 'Подходит ли это блюдо для набора мышечной массы, белка и после тренировки?';
+    } else {
+      question =
+        lang === 'uz'
+          ? 'Bu taom haqida umumiy dietologik xulosa bering.'
+          : lang === 'en'
+            ? 'Provide an overall dietician summary for this dish.'
+            : 'Дайте краткую диетологическую оценку этому блюду.';
+    }
+
+    const mealContext = meal
+      ? `Блюдо: ${meal.foodName}, порция: ${meal.portionSize || 'порция'}, калории: ${meal.calories} ккал, белки: ${meal.protein}г, жиры: ${meal.fat}г, углеводы: ${meal.carbs}г.`
+      : undefined;
+
+    await this.sendChatAction(chatId, 'typing');
+
+    try {
+      const reply = await this.chatService.getResponse({
+        message: question,
+        mealContext,
+      });
+
+      const header =
+        lang === 'uz'
+          ? `🤖 **AI Dietolog javobi** (${meal?.foodName || 'Taom'}):\n\n`
+          : lang === 'en'
+            ? `🤖 **AI Dietitian Answer** (${meal?.foodName || 'Dish'}):\n\n`
+            : `🤖 **ИИ-Диетолог** (${meal?.foodName || 'Блюдо'}):\n\n`;
+
+      const appBtn =
+        lang === 'uz'
+          ? '🚀 CaloFit App-ni ochish'
+          : lang === 'en'
+            ? '🚀 Open CaloFit App'
+            : '🚀 Открыть CaloFit App';
+
+      await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: `${header}${reply}`,
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: appBtn,
+                  web_app: { url: this.getWebAppUrl(chatId) },
+                },
+              ],
+            ],
+          },
+        }),
+      });
+    } catch {
+      await this.sendCustomMessage(
+        chatId,
+        lang === 'uz'
+          ? 'Kechirasiz, javob olishda xatolik yuz berdi. Qaytadan urinib koring.'
+          : 'Извините, не удалось получить ответ диетолога. Попробуйте еще раз.',
+      );
     }
   }
 

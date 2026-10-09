@@ -44,4 +44,13 @@ export class SendMessageDto {
   @ValidateNested({ each: true })
   @Type(() => ChatMessageDto)
   history?: ChatMessageDto[];
+
+  @ApiProperty({
+    description: 'Optional meal context for asking questions about a specific dish',
+    required: false,
+    example: 'Dish: Beef Steak with Asparagus, 450 kcal, 45g protein, 25g fat, 5g carbs',
+  })
+  @IsString()
+  @IsOptional()
+  mealContext?: string;
 }
