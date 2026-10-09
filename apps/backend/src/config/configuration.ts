@@ -20,7 +20,7 @@ export const validationSchema = Joi.object({
   OPENAI_API_KEY: Joi.string().optional(),
   OPENAI_MODEL: Joi.string().default('gpt-4o-mini'),
   GEMINI_API_KEY: Joi.string().optional(),
-  GEMINI_MODEL: Joi.string().default('gemini-3.8-flash'),
+  GEMINI_MODEL: Joi.string().default('gemini-flash-lite-latest'),
 
   // Storage
   STORAGE_PROVIDER: Joi.string().valid('supabase').default('supabase'),

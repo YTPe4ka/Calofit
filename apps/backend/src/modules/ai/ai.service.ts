@@ -14,7 +14,7 @@ import {
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private readonly TIMEOUT_MS = 25_000;
+  private readonly TIMEOUT_MS = 50_000;
 
   constructor(@Inject('AI_PROVIDER') private provider: AIProvider) {}
 

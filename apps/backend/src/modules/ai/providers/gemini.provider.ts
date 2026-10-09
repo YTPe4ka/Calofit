@@ -43,7 +43,7 @@ export class GeminiProvider extends AIProvider {
       fallbackKey;
 
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.primaryModel = config.get<string>('GEMINI_MODEL') || 'gemini-3.8-flash';
+    this.primaryModel = config.get<string>('GEMINI_MODEL') || 'gemini-flash-lite-latest';
   }
 
   async analyzeFood(
@@ -101,7 +101,9 @@ Return ONLY a valid JSON object matching the schema. No markdown formatting, no 
 
     const candidateModels = [
       this.primaryModel,
-      'gemini-3.8-flash',
+      'gemini-flash-lite-latest',
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash',
       'gemini-3.7-flash',
       'gemini-flash-latest',
     ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
@@ -117,7 +119,13 @@ Return ONLY a valid JSON object matching the schema. No markdown formatting, no 
           },
         });
 
-        const result = await model.generateContent([prompt, imagePart]);
+        // 12-second per-model timeout to avoid hanging when a model is slow
+        const callPromise = model.generateContent([prompt, imagePart]);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('MODEL_TIMEOUT')), 12_000),
+        );
+
+        const result = await Promise.race([callPromise, timeoutPromise]);
         const rawContent = result.response.text();
 
         let parsed: any;
