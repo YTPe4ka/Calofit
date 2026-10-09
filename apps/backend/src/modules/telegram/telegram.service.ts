@@ -380,16 +380,64 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // ─── Persistent Bottom Reply Keyboard ───────────────────────
+  private getPersistentKeyboard(chatId: number) {
+    const lang = this.getUserLang(chatId);
+    const label =
+      lang === 'uz'
+        ? '🚀 CaloFit App-ni ochish'
+        : lang === 'en'
+          ? '🚀 Open CaloFit App'
+          : '🚀 Открыть CaloFit App';
+
+    return {
+      keyboard: [
+        [
+          {
+            text: label,
+            web_app: { url: this.getWebAppUrl(chatId) },
+          },
+        ],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    };
+  }
+
   // ─── Language & Main Menu on /start ─────────────────────────
   private async sendLanguageSelectionMenu(chatId: number, firstName: string) {
     const lang = this.getUserLang(chatId);
     const isMuted = this.mutedChatIds.has(chatId);
-    const text =
+    const welcomeText =
       lang === 'uz'
-        ? `Salom, ${firstName}! 👋 **CaloFit** ilovasiga xush kelibsiz!\n\nIlovani ishga tushirish uchun pastdagi tugmani bosing yoki til va eslatmalarni sozlang:`
+        ? `Salom, ${firstName}! 👋 **CaloFit** ilovasiga xush kelibsiz!\n\nIlovani ishga tushirish uchun pastdagi **«🚀 CaloFit App-ni ochish»** tugmasini bosing 👇`
         : lang === 'en'
-          ? `Hello, ${firstName}! 👋 Welcome to **CaloFit**!\n\nTap the button below to launch the app or configure language and reminders:`
-          : `Привет, ${firstName}! 👋 Добро пожаловать в **CaloFit**!\n\nНажмите кнопку ниже, чтобы запустить приложение, или настройте язык и уведомления:`;
+          ? `Hello, ${firstName}! 👋 Welcome to **CaloFit**!\n\nTap the **«🚀 Open CaloFit App»** button below to launch the app 👇`
+          : `Привет, ${firstName}! 👋 Добро пожаловать в **CaloFit**!\n\nНажмите кнопку **«🚀 Открыть CaloFit App»** внизу экрана, чтобы запустить приложение 👇`;
+
+    const notifyBtnText = isMuted
+      ? (lang === 'uz' ? '🔕 Eslatmalar: O\'chiq' : lang === 'en' ? '🔕 Reminders: OFF' : '🔕 Уведомления: Выкл')
+      : (lang === 'uz' ? '🔔 Eslatmalar: Yoqiq' : lang === 'en' ? '🔔 Reminders: ON' : '🔔 Уведомления: Вкл');
+
+    // 1. Send welcome message with persistent reply keyboard (fixed button at the bottom of the chat)
+    await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: welcomeText,
+        parse_mode: 'Markdown',
+        reply_markup: this.getPersistentKeyboard(chatId),
+      }),
+    });
+
+    // 2. Send inline settings menu for language and notification toggles
+    const settingsPrompt =
+      lang === 'uz'
+        ? '⚙️ **Til va sozlamalar:**'
+        : lang === 'en'
+          ? '⚙️ **Language & Settings:**'
+          : '⚙️ **Язык и настройки:**';
 
     const appBtnText =
       lang === 'uz'
@@ -398,16 +446,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           ? '🚀 Open CaloFit App'
           : '🚀 Открыть CaloFit App';
 
-    const notifyBtnText = isMuted
-      ? (lang === 'uz' ? '🔕 Eslatmalar: O\'chiq' : lang === 'en' ? '🔕 Reminders: OFF' : '🔕 Уведомления: Выкл')
-      : (lang === 'uz' ? '🔔 Eslatmalar: Yoqiq' : lang === 'en' ? '🔔 Reminders: ON' : '🔔 Уведомления: Вкл');
-
     await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text,
+        text: settingsPrompt,
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -564,30 +608,30 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         chat_id: chatId,
         text,
         parse_mode: 'Markdown',
-        reply_markup: {
-          keyboard: [[{ text: buttonLabel, web_app: { url: this.getWebAppUrl(chatId) } }]],
-          resize_keyboard: true,
-        },
+        reply_markup: this.getPersistentKeyboard(chatId),
       }),
     });
   }
 
   private async sendAppLauncherMessage(chatId: number) {
     const lang = this.getUserLang(chatId);
-    const label =
-      lang === 'uz'
-        ? '📱 CaloFit-ni ochish'
-        : lang === 'en'
-          ? '📱 Open CaloFit'
-          : '📱 Открыть CaloFit';
     const text =
       lang === 'uz'
-        ? 'CaloFit ilovasini ishga tushirish uchun pastdagi tugmani bosing 👇'
+        ? 'CaloFit ilovasini ishga tushirish uchun pastdagi **«🚀 CaloFit App-ni ochish»** tugmasini bosing 👇'
         : lang === 'en'
-          ? 'Tap the button below to launch CaloFit WebApp 👇'
-          : 'Нажми кнопку ниже, чтобы запустить приложение CaloFit 👇';
+          ? 'Tap the **«🚀 Open CaloFit App»** button below to launch CaloFit WebApp 👇'
+          : 'Нажмите кнопку **«🚀 Открыть CaloFit App»** внизу экрана, чтобы запустить приложение 👇';
 
-    await this.sendCustomMessage(chatId, text, label);
+    await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        reply_markup: this.getPersistentKeyboard(chatId),
+      }),
+    });
   }
 
   // ─── /lang — Standalone Language Selection ─────────────────
