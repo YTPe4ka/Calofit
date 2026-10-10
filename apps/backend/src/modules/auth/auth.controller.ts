@@ -162,6 +162,49 @@ export class AuthController {
     };
   }
 
+  @Post('telegram/send-code')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Telegram login verification code yuborish' })
+  async sendTelegramCode(
+    @Body() body: { username: string; locale?: string },
+    @Req() req: Request,
+  ) {
+    const clientIp =
+      (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+    return this.authService.sendTelegramAuthCode(
+      body.username,
+      body.locale,
+      clientIp,
+    );
+  }
+
+  @Post('telegram/verify-code')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Telegram login kodini tasdiqlash va kirish' })
+  async verifyTelegramCode(
+    @Body() body: { username: string; code: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const clientIp =
+      (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+    const result = await this.authService.verifyTelegramAuthCode(
+      body.username,
+      body.code,
+      clientIp,
+    );
+    if (result.refreshToken) {
+      res.cookie('refreshToken', result.refreshToken, COOKIE_OPTIONS);
+    }
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      user: result.user,
+    };
+  }
+
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Joriy foydalanuvchi ma’lumotlari va obuna holati' })

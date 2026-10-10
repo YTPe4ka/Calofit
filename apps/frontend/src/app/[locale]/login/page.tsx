@@ -7,7 +7,26 @@ import { Link, useRouter, usePathname } from '@/i18n/routing';
 import { toast } from 'sonner';
 import { useParams, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Sun, Moon, ChevronDown, Check, Eye, EyeOff, Loader2, AlertTriangle, Send, X, Smartphone, UserCheck } from 'lucide-react';
+import {
+  Sun,
+  Moon,
+  ChevronDown,
+  Check,
+  Eye,
+  EyeOff,
+  Loader2,
+  AlertTriangle,
+  Send,
+  X,
+  Smartphone,
+  UserCheck,
+  Shield,
+  Lock,
+  Clock,
+  ArrowLeft,
+  ExternalLink,
+  RefreshCw,
+} from 'lucide-react';
 import { useTheme } from '@/providers/theme-provider';
 
 const LANG_MAP = {
@@ -55,9 +74,34 @@ export default function LoginPage() {
   const [showVerifyPrompt, setShowVerifyPrompt] = useState(false);
   const [isResending, setIsResending] = useState(false);
 
-  // Direct Telegram Login Modal State
+  // Telegram 2-Step Code Verification Modal State
   const [isTgModalOpen, setIsTgModalOpen] = useState(false);
-  const [tgInputVal, setTgInputVal] = useState('');
+  const [tgUsername, setTgUsername] = useState('');
+  const [tgCode, setTgCode] = useState('');
+  const [tgStep, setTgStep] = useState<'username' | 'code'>('username');
+  const [tgAttemptsLeft, setTgAttemptsLeft] = useState<number | null>(null);
+  const [tgBlockedUntil, setTgBlockedUntil] = useState<number | null>(null);
+  const [tgBlockCountdown, setTgBlockCountdown] = useState<number | null>(null);
+  const [tgBotNotFound, setTgBotNotFound] = useState(false);
+  const [isSendingTgCode, setIsSendingTgCode] = useState(false);
+  const [isVerifyingTgCode, setIsVerifyingTgCode] = useState(false);
+
+  // Block countdown effect
+  useEffect(() => {
+    if (!tgBlockedUntil) return;
+    const interval = setInterval(() => {
+      const now = Date.now();
+      if (now >= tgBlockedUntil) {
+        setTgBlockedUntil(null);
+        setTgBlockCountdown(null);
+        clearInterval(interval);
+      } else {
+        const remainingSeconds = Math.ceil((tgBlockedUntil - now) / 1000);
+        setTgBlockCountdown(remainingSeconds);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [tgBlockedUntil]);
 
   // Auto-login if inside Telegram WebApp
   useEffect(() => {
@@ -153,7 +197,7 @@ export default function LoginPage() {
           initData,
           telegramUser,
           guestId,
-          directUsernameOrPhone: inputIdentifier || tgInputVal || undefined,
+          directUsernameOrPhone: inputIdentifier || tgUsername || undefined,
         });
         data = res.data;
       } catch (tgErr: any) {
@@ -161,7 +205,7 @@ export default function LoginPage() {
         console.warn('[TG Login Error]:', tgErr.response?.data || tgErr.message);
 
         // Fallback: automatically attempt register/login with tg identifier
-        const identifier = inputIdentifier || tgInputVal || telegramUser?.username || telegramUser?.id || guestId || `tg_${Date.now()}`;
+        const identifier = inputIdentifier || tgUsername || telegramUser?.username || telegramUser?.id || guestId || `tg_${Date.now()}`;
         const cleanId = String(identifier).replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
         const fallbackEmail = `tg_${cleanId}@telegram.calofit.com`;
         const fallbackPass = `TgAutoPass_${cleanId}_2026!`;
@@ -219,8 +263,117 @@ export default function LoginPage() {
     if (tg?.initDataUnsafe?.user?.id || tg?.initData) {
       handleTelegramDirectAuth();
     } else {
-      // In external browser, open instant login modal so user is not stuck in Telegram loop
+      // In external browser, open 2-step verification modal
       setIsTgModalOpen(true);
+      setTgStep('username');
+      setTgBotNotFound(false);
+    }
+  };
+
+  const handleSendTgCode = async () => {
+    if (!tgUsername.trim() || isSendingTgCode) return;
+    setIsSendingTgCode(true);
+    setTgBotNotFound(false);
+
+    try {
+      const { data } = await api.post('/auth/telegram/send-code', {
+        username: tgUsername.trim(),
+        locale,
+      });
+
+      toast.success(
+        locale === 'ru'
+          ? 'Код отправлен в Telegram!'
+          : locale === 'en'
+            ? 'Code sent to Telegram!'
+            : 'Kod Telegramga yuborildi!',
+      );
+      setTgAttemptsLeft(data.attemptsRemaining);
+      setTgStep('code');
+      setTgCode('');
+    } catch (err: any) {
+      const status = err.response?.status;
+      const data = err.response?.data;
+
+      if (status === 429) {
+        const blockMs = data?.blockedUntil || Date.now() + 30 * 60 * 1000;
+        setTgBlockedUntil(blockMs);
+        toast.error(
+          data?.message ||
+            (locale === 'ru'
+              ? 'Превышен лимит попыток. Доступ заблокирован на 30 мин.'
+              : 'Limit oshib ketdi. 30 daqiqaga bloklandi.'),
+        );
+      } else if (data?.error === 'TG_USER_NOT_FOUND') {
+        setTgBotNotFound(true);
+        if (typeof data.attemptsRemaining === 'number') {
+          setTgAttemptsLeft(data.attemptsRemaining);
+        }
+        toast.error(data.message);
+      } else {
+        toast.error(
+          data?.message ||
+            (locale === 'ru'
+              ? 'Ошибка отправки кода'
+              : 'Kodni yuborishda xatolik'),
+        );
+      }
+    } finally {
+      setIsSendingTgCode(false);
+    }
+  };
+
+  const handleVerifyTgCode = async () => {
+    if (!tgCode.trim() || isVerifyingTgCode) return;
+    setIsVerifyingTgCode(true);
+
+    try {
+      const { data } = await api.post('/auth/telegram/verify-code', {
+        username: tgUsername.trim(),
+        code: tgCode.trim(),
+      });
+
+      if (data?.accessToken) {
+        localStorage.setItem('accessToken', data.accessToken);
+        if (data.refreshToken)
+          localStorage.setItem('refreshToken', data.refreshToken);
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+          setUser(data.user);
+        }
+        toast.success(
+          locale === 'ru' ? 'Вход выполнен!' : 'Muvaffaqiyatli kirildi!',
+        );
+        setIsTgModalOpen(false);
+        if (data.user?.hasProfile) {
+          window.location.href = `/${locale}/dashboard`;
+        } else {
+          window.location.href = `/${locale}/profile`;
+        }
+      }
+    } catch (err: any) {
+      const status = err.response?.status;
+      const data = err.response?.data;
+
+      if (status === 429) {
+        const blockMs = data?.blockedUntil || Date.now() + 30 * 60 * 1000;
+        setTgBlockedUntil(blockMs);
+        toast.error(
+          data?.message ||
+            (locale === 'ru'
+              ? 'Заблокировано на 30 мин.'
+              : '30 daqiqaga bloklandi.'),
+        );
+      } else {
+        toast.error(
+          data?.message ||
+            (locale === 'ru'
+              ? 'Неверный код подтверждения'
+              : 'Tasdiqlash kodi noto‘g‘ri'),
+        );
+      }
+    } finally {
+      setIsVerifyingTgCode(false);
     }
   };
 
@@ -517,7 +670,7 @@ export default function LoginPage() {
             <div className="flex-grow border-t border-gray-200/50 dark:border-slate-800/80"></div>
           </div>
 
-          {/* Telegram One-Click Login Button */}
+          {/* Telegram Login Button */}
           <button
             type="button"
             onClick={handleTelegramClick}
@@ -525,7 +678,7 @@ export default function LoginPage() {
             className="w-full py-3 rounded-xl font-bold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/20 transition-all duration-200 flex items-center justify-center gap-2.5 active:scale-[0.98] cursor-pointer disabled:opacity-50"
           >
             <Send size={16} />
-            {locale === 'ru' ? 'Войти через Telegram в 1 клик' : locale === 'en' ? 'Sign in with Telegram (1-Click)' : 'Telegram orqali 1-bosishda kirish'}
+            {t('tg_login_btn')}
           </button>
 
           {/* Google Login Button */}
@@ -553,64 +706,224 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Direct Telegram Username / Phone Login Modal */}
+      {/* Two-Step Telegram Code Verification Modal */}
       {isTgModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 shadow-2xl p-6 space-y-5 relative animate-scale-up">
+          <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 shadow-2xl p-6 space-y-4 relative animate-scale-up">
+            {/* Close Button */}
             <button
               type="button"
               onClick={() => setIsTgModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              className="absolute top-4 right-4 p-1.5 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
             >
               <X size={16} />
             </button>
 
-            <div className="text-center space-y-1">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-500 mb-2">
-                <Send size={24} />
+            {/* Blocked Countdown Banner */}
+            {tgBlockedUntil && tgBlockCountdown && (
+              <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 flex items-center gap-3 text-rose-600 dark:text-rose-400">
+                <Clock size={18} className="shrink-0 animate-pulse text-rose-500" />
+                <div className="text-xs">
+                  <div className="font-bold">
+                    {locale === 'ru' ? 'Временная блокировка (30 мин)' : 'Vaqtincha bloklandi (30 daq)'}
+                  </div>
+                  <div className="font-mono text-[11px] text-rose-500">
+                    {locale === 'ru'
+                      ? `Повторите через ${Math.floor(tgBlockCountdown / 60)}:${String(tgBlockCountdown % 60).padStart(2, '0')}`
+                      : `Qayta urinish: ${Math.floor(tgBlockCountdown / 60)}:${String(tgBlockCountdown % 60).padStart(2, '0')}`}
+                  </div>
+                </div>
               </div>
-              <h3 className="text-base font-extrabold text-gray-900 dark:text-white">
-                {locale === 'ru' ? 'Вход по Telegram' : 'Telegram orqali kirish'}
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-slate-400">
-                {locale === 'ru'
-                  ? 'Введите ваш @username или номер телефона для мгновенного входа без пароля:'
-                  : 'Parolsiz tezkor kirish uchun @username yoki telefon raqamingizni kiriting:'}
-              </p>
-            </div>
+            )}
 
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="@username (например @yeb0n) или телефон"
-                value={tgInputVal}
-                onChange={(e) => setTgInputVal(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950 text-gray-900 dark:text-white placeholder:text-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                autoFocus
-              />
+            {/* STEP 1: Enter Username */}
+            {tgStep === 'username' && (
+              <div className="space-y-4">
+                <div className="text-center space-y-1.5">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-500 mb-1">
+                    <Send size={22} />
+                  </div>
+                  <h3 className="text-base font-extrabold text-gray-900 dark:text-white">
+                    {t('tg_modal_title')}
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed">
+                    {t('tg_step1_desc')}
+                  </p>
+                </div>
 
-              <button
-                type="button"
-                onClick={() => handleTelegramDirectAuth(tgInputVal)}
-                disabled={isLoading || !tgInputVal.trim()}
-                className="w-full py-3 rounded-xl font-bold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/25 active:scale-95 transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
-              >
-                {isLoading ? <Loader2 size={16} className="animate-spin" /> : <UserCheck size={16} />}
-                <span>{locale === 'ru' ? 'Войти моментально' : 'Tezkor kirish'}</span>
-              </button>
+                {/* Bot Not Found Alert */}
+                {tgBotNotFound && (
+                  <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 text-xs text-amber-800 dark:text-amber-300 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={15} className="shrink-0 text-amber-500 mt-0.5" />
+                      <span className="leading-tight">
+                        {locale === 'ru'
+                          ? 'Бот еще не получил от вас сообщение. Нажмите кнопку ниже и запустите бота:'
+                          : 'Bot hali sizdan xabar olmagan. Pastdagi tugmani bosing va botni ishga tushiring:'}
+                      </span>
+                    </div>
+                    <a
+                      href="https://t.me/Calofit_app_bot?start=auth"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-sky-500 text-white font-bold text-xs hover:bg-sky-600 transition shadow-sm"
+                    >
+                      <ExternalLink size={13} />
+                      <span>{locale === 'ru' ? 'Запустить @Calofit_app_bot' : '@Calofit_app_bot ni ishga tushirish'}</span>
+                    </a>
+                  </div>
+                )}
 
-              <div className="pt-2 border-t border-gray-150 dark:border-slate-800 text-center">
-                <a
-                  href="https://t.me/Calofit_app_bot?start=webapp"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1.5 font-semibold"
-                >
-                  <Smartphone size={13} />
-                  <span>{locale === 'ru' ? 'Или открыть в Telegram-боте' : locale === 'en' ? 'Or open in Telegram Bot' : 'Yoki Telegram botda ochish'}</span>
-                </a>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-600 dark:text-slate-400 mb-1">
+                      Telegram @username
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={t('tg_username_placeholder')}
+                      value={tgUsername}
+                      onChange={(e) => setTgUsername(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isSendingTgCode && !tgBlockedUntil) {
+                          handleSendTgCode();
+                        }
+                      }}
+                      disabled={isSendingTgCode || !!tgBlockedUntil}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950 text-gray-900 dark:text-white placeholder:text-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40 disabled:opacity-50"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-slate-400">
+                    <Shield size={12} className="text-emerald-500 shrink-0" />
+                    <span>{t('tg_rate_limit_notice')}</span>
+                  </div>
+
+                  {tgAttemptsLeft !== null && (
+                    <div className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                      {locale === 'ru'
+                        ? `Осталось попыток: ${tgAttemptsLeft}`
+                        : `Qolgan urinishlar: ${tgAttemptsLeft}`}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleSendTgCode}
+                    disabled={isSendingTgCode || !tgUsername.trim() || !!tgBlockedUntil}
+                    className="w-full py-3 rounded-xl font-bold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/25 active:scale-95 transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {isSendingTgCode ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Send size={15} />
+                    )}
+                    <span>{t('tg_send_code_btn')}</span>
+                  </button>
+
+                  <div className="pt-2 border-t border-gray-150 dark:border-slate-800 text-center">
+                    <a
+                      href="https://t.me/Calofit_app_bot?start=webapp"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1.5 font-semibold"
+                    >
+                      <Smartphone size={13} />
+                      <span>
+                        {locale === 'ru'
+                          ? 'Или открыть сайт внутри Telegram-бота'
+                          : locale === 'en'
+                            ? 'Or open inside Telegram Bot'
+                            : 'Yoki Telegram bot ichida ochish'}
+                      </span>
+                    </a>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* STEP 2: Enter Verification Code */}
+            {tgStep === 'code' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setTgStep('username')}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-white transition"
+                  >
+                    <ArrowLeft size={13} />
+                    <span>{t('tg_change_username')}</span>
+                  </button>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold">
+                    @{tgUsername.replace(/^@/, '')}
+                  </span>
+                </div>
+
+                <div className="text-center space-y-1">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-500 mb-1">
+                    <Lock size={22} />
+                  </div>
+                  <h3 className="text-base font-extrabold text-gray-900 dark:text-white">
+                    {t('tg_step2_title')}
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed">
+                    {t('tg_step2_desc').replace('{username}', tgUsername.replace(/^@/, ''))}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      placeholder="••••••"
+                      value={tgCode}
+                      onChange={(e) => setTgCode(e.target.value.replace(/\D/g, ''))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isVerifyingTgCode && !tgBlockedUntil) {
+                          handleVerifyTgCode();
+                        }
+                      }}
+                      disabled={isVerifyingTgCode || !!tgBlockedUntil}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950 text-gray-900 dark:text-white placeholder:text-gray-300 dark:placeholder:text-slate-600 text-center text-2xl font-mono font-bold tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-sky-500/40 disabled:opacity-50"
+                      autoFocus
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleVerifyTgCode}
+                    disabled={isVerifyingTgCode || tgCode.trim().length < 4 || !!tgBlockedUntil}
+                    className="w-full py-3 rounded-xl font-bold text-xs text-white bg-green-500 hover:bg-green-600 shadow-md shadow-green-500/25 active:scale-95 transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {isVerifyingTgCode ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Check size={16} />
+                    )}
+                    <span>{t('tg_verify_btn')}</span>
+                  </button>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-150 dark:border-slate-800 text-xs">
+                    <button
+                      type="button"
+                      onClick={handleSendTgCode}
+                      disabled={isSendingTgCode || !!tgBlockedUntil}
+                      className="text-sky-600 dark:text-sky-400 hover:underline font-semibold text-[11px] inline-flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <RefreshCw size={12} className={isSendingTgCode ? 'animate-spin' : ''} />
+                      <span>{t('tg_resend_code')}</span>
+                    </button>
+                    <span className="text-[10px] text-gray-400">
+                      {locale === 'ru' ? 'Макс. 3 попытки' : 'Maks. 3 urinish'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -9,7 +9,19 @@
     "signing_in": "Signing in...",
     "signing_up": "Registering...",
     "error_login": "Incorrect email or password",
-    "error_register": "Registration error occurred"
+    "error_register": "Registration error occurred",
+    "tg_login_btn": "Sign in with Telegram",
+    "tg_modal_title": "Sign in with Telegram",
+    "tg_step1_desc": "Enter your Telegram @username, and our bot will send you a secret login code:",
+    "tg_username_placeholder": "@username (e.g. @yeb0n)",
+    "tg_send_code_btn": "Send Code to Telegram",
+    "tg_step2_title": "Enter Telegram Code",
+    "tg_step2_desc": "Bot sent a 6-digit code to",
+    "tg_code_placeholder": "6-digit code (e.g. 123456)",
+    "tg_verify_btn": "Verify & Sign In",
+    "tg_resend_code": "Resend code",
+    "tg_change_username": "Change username",
+    "tg_rate_limit_notice": "Limit: maximum 3 attempts, then locked for 30 minutes."
   },
   "dashboard": {
     "title": "Today's Analysis",

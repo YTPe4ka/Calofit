@@ -9,7 +9,19 @@
     "signing_in": "Kirilmoqda...",
     "signing_up": "Ro'yxatdan o'tilmoqda...",
     "error_login": "Email yoki parol noto'g'ri",
-    "error_register": "Ro'yxatdan o'tishda xatolik yuz berdi"
+    "error_register": "Ro'yxatdan o'tishda xatolik yuz berdi",
+    "tg_login_btn": "Telegram orqali kirish",
+    "tg_modal_title": "Telegram orqali kirish",
+    "tg_step1_desc": "Telegram @username-ingizni kiriting, bot sizga maxfiy tasdiqlash kodini yuboradi:",
+    "tg_username_placeholder": "@username (masalan @yeb0n)",
+    "tg_send_code_btn": "Telegramga kod yuborish",
+    "tg_step2_title": "Telegram kodini kiriting",
+    "tg_step2_desc": "@Calofit_app_bot 6 xonali kodni yubordi:",
+    "tg_code_placeholder": "6 xonali kod (masalan 123456)",
+    "tg_verify_btn": "Tasdiqlash va kirish",
+    "tg_resend_code": "Kodni qayta yuborish",
+    "tg_change_username": "Username-ni o'zgartirish",
+    "tg_rate_limit_notice": "Limit: ko'pi bilan 3 urinish, keyin 30 daqiqa bloklanadi."
   },
   "dashboard": {
     "title": "Bugungi tahlil",

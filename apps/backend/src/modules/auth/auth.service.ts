@@ -1,10 +1,13 @@
 import {
+  BadRequestException,
   ConflictException,
-  Injectable,
-  UnauthorizedException,
   ForbiddenException,
-  NotFoundException,
+  HttpException,
+  HttpStatus,
+  Injectable,
   Logger,
+  NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -15,9 +18,27 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { MailService } from '../mail/mail.service';
 
+interface TelegramVerificationState {
+  code?: string;
+  expiresAt?: number;
+  attempts: number;
+  verifyFailedAttempts: number;
+  blockedUntil?: number;
+  chatId?: string;
+  targetUsername?: string;
+  lastAttemptTime: number;
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+
+  // In-memory rate limiting and verification code storage
+  private tgVerificationMap = new Map<string, TelegramVerificationState>();
+  private ipVerificationMap = new Map<
+    string,
+    { attempts: number; blockedUntil?: number; lastAttemptTime: number }
+  >();
 
   constructor(
     private prisma: PrismaService,
@@ -740,6 +761,357 @@ export class AuthService {
         telegramId: user.telegramId,
         telegramUsername: user.telegramUsername,
         name: profileExists?.name || firstName,
+        hasProfile: !!profileExists,
+        ...subInfo,
+      },
+    };
+  }
+
+  // ─── Send 6-Digit Telegram Auth Code (With 3-Attempt 30-min Anti-Spam) ────
+  async sendTelegramAuthCode(
+    username: string,
+    locale?: string,
+    clientIp?: string,
+  ) {
+    if (!username || !username.trim()) {
+      throw new BadRequestException('Пожалуйста, введите ваш @username в Telegram.');
+    }
+
+    const cleanUsername = username.trim().replace(/^@/, '').toLowerCase();
+    const now = Date.now();
+
+    // 1. Check IP rate limit
+    if (clientIp) {
+      const ipState = this.ipVerificationMap.get(clientIp);
+      if (ipState?.blockedUntil && ipState.blockedUntil > now) {
+        const minsLeft = Math.ceil((ipState.blockedUntil - now) / 60000);
+        throw new HttpException(
+          {
+            error: 'RATE_LIMIT_EXCEEDED',
+            message: `Слишком много запросов с вашего IP. Повторите попытку через ${minsLeft} мин.`,
+            blockedUntil: ipState.blockedUntil,
+            remainingMinutes: minsLeft,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+
+    let state = this.tgVerificationMap.get(cleanUsername);
+    if (!state) {
+      state = {
+        attempts: 0,
+        verifyFailedAttempts: 0,
+        lastAttemptTime: now,
+      };
+      this.tgVerificationMap.set(cleanUsername, state);
+    }
+
+    // 2. Check if username is blocked
+    if (state.blockedUntil && state.blockedUntil > now) {
+      const minsLeft = Math.ceil((state.blockedUntil - now) / 60000);
+      throw new HttpException(
+        {
+          error: 'RATE_LIMIT_EXCEEDED',
+          message: `Вы исчерпали лимит попыток (3 раза). Доступ заблокирован на ${minsLeft} мин.`,
+          blockedUntil: state.blockedUntil,
+          remainingMinutes: minsLeft,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Reset attempts if block has expired
+    if (state.blockedUntil && state.blockedUntil <= now) {
+      state.attempts = 0;
+      state.verifyFailedAttempts = 0;
+      state.blockedUntil = undefined;
+    }
+
+    // 3. Strict 3 attempts limit -> 30 minutes block
+    if (state.attempts >= 3) {
+      state.blockedUntil = now + 30 * 60 * 1000;
+      throw new HttpException(
+        {
+          error: 'RATE_LIMIT_EXCEEDED',
+          message: 'Вы исчерпали лимит запросов кода (3 раза). Доступ заблокирован на 30 минут.',
+          blockedUntil: state.blockedUntil,
+          remainingMinutes: 30,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // 4. Find recipient in TelegramSubscriber or User
+    const subscriber = await this.prisma.telegramSubscriber.findFirst({
+      where: {
+        OR: [
+          { username: { equals: cleanUsername, mode: 'insensitive' } },
+          { telegramId: cleanUsername },
+          { chatId: cleanUsername },
+        ],
+      },
+    });
+
+    const dbUser = !subscriber
+      ? await this.prisma.user.findFirst({
+          where: {
+            OR: [
+              { telegramUsername: { equals: cleanUsername, mode: 'insensitive' } },
+              { telegramId: cleanUsername },
+              { telegramChatId: cleanUsername },
+            ],
+          },
+        })
+      : null;
+
+    let targetChatId =
+      subscriber?.chatId ||
+      dbUser?.telegramChatId ||
+      (subscriber?.telegramId && !isNaN(Number(subscriber.telegramId))
+        ? subscriber.telegramId
+        : null);
+
+    if (!targetChatId) {
+      state.attempts += 1;
+      state.lastAttemptTime = now;
+      if (state.attempts >= 3) {
+        state.blockedUntil = now + 30 * 60 * 1000;
+      }
+      throw new BadRequestException({
+        error: 'TG_USER_NOT_FOUND',
+        message:
+          locale === 'ru'
+            ? `Пользователь @${cleanUsername} еще не активировал нашего бота. Откройте @Calofit_app_bot, нажмите «Старт» (/start) и попробуйте снова.`
+            : locale === 'en'
+              ? `User @${cleanUsername} hasn't started the bot yet. Open @Calofit_app_bot, tap /start, and try again.`
+              : `@${cleanUsername} foydalanuvchisi botni ishga tushirmagan. @Calofit_app_bot ni ochib, /start tugmasini bosing va qayta urinib ko'ring.`,
+        botUsername: 'Calofit_app_bot',
+        botUrl: 'https://t.me/Calofit_app_bot',
+        attemptsRemaining: Math.max(0, 3 - state.attempts),
+      });
+    }
+
+    // 5. Generate secure 6-digit verification code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    state.code = code;
+    state.expiresAt = now + 10 * 60 * 1000; // 10 minutes
+    state.attempts += 1;
+    state.chatId = targetChatId;
+    state.targetUsername = cleanUsername;
+    state.lastAttemptTime = now;
+
+    if (state.attempts >= 3) {
+      state.blockedUntil = now + 30 * 60 * 1000; // 30 minutes block triggered after 3rd attempt
+    }
+
+    if (clientIp) {
+      let ipState = this.ipVerificationMap.get(clientIp);
+      if (!ipState) {
+        ipState = { attempts: 0, lastAttemptTime: now };
+        this.ipVerificationMap.set(clientIp, ipState);
+      }
+      ipState.attempts += 1;
+      if (ipState.attempts >= 5) {
+        ipState.blockedUntil = now + 30 * 60 * 1000;
+      }
+    }
+
+    const botToken =
+      this.config.get<string>('TELEGRAM_BOT_TOKEN') ||
+      '8838776318:AAH0rDl8PJxjvGHlmuEoDhevWouUN5kzU-c';
+
+    const lang = subscriber?.lang || locale || 'ru';
+    let msgText = '';
+    if (lang === 'uz') {
+      msgText = `🔐 **CaloFit xavfsizlik kodi:** \`${code}\`\n\nIlovaga kirish uchun ushbu 6 xonali kodni kiriting.\nAmal qilish muddati: **10 daqiqa**.\n\n⚠️ Agar siz kod so'ramagan bo'lsangiz, bu xabarni e'tiborsiz qoldiring.`;
+    } else if (lang === 'en') {
+      msgText = `🔐 **CaloFit verification code:** \`${code}\`\n\nEnter this 6-digit code to sign in.\nValid for: **10 minutes**.\n\n⚠️ If you didn't request this code, ignore this message.`;
+    } else {
+      msgText = `🔐 **Код подтверждения CaloFit:** \`${code}\`\n\nВведите этот 6-значный код на сайте для входа в аккаунт.\nСрок действия: **10 минут**.\n\n⚠️ Если вы не запрашивали вход, никому не сообщайте этот код.`;
+    }
+
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${botToken}/sendMessage`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: targetChatId,
+            text: msgText,
+            parse_mode: 'Markdown',
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!data.ok) {
+        this.logger.error('Telegram sendMessage error: ' + JSON.stringify(data));
+        throw new BadRequestException(
+          'Не удалось отправить сообщение в Telegram. Убедитесь, что диалог с @Calofit_app_bot активен.',
+        );
+      }
+    } catch (sendErr: any) {
+      if (sendErr instanceof HttpException) throw sendErr;
+      this.logger.error('Telegram network error: ' + sendErr?.message);
+      throw new BadRequestException('Ошибка сети при отправке в Telegram. Попробуйте еще раз.');
+    }
+
+    return {
+      success: true,
+      message:
+        lang === 'uz'
+          ? 'Tasdiqlash kodi Telegramga yuborildi'
+          : lang === 'en'
+            ? 'Verification code sent to Telegram'
+            : 'Код подтверждения отправлен в Telegram',
+      attemptsRemaining: Math.max(0, 3 - state.attempts),
+      attemptsUsed: state.attempts,
+      isBlockedAfterThis: state.attempts >= 3,
+    };
+  }
+
+  // ─── Verify 6-Digit Telegram Auth Code & Sign In ─────────────────────────
+  async verifyTelegramAuthCode(
+    username: string,
+    code: string,
+    clientIp?: string,
+  ) {
+    if (!username || !code) {
+      throw new BadRequestException('Укажите username и код подтверждения.');
+    }
+
+    const cleanUsername = username.trim().replace(/^@/, '').toLowerCase();
+    const cleanCode = code.trim().replace(/\s/g, '');
+    const now = Date.now();
+
+    const state = this.tgVerificationMap.get(cleanUsername);
+
+    // Check block
+    if (state?.blockedUntil && state.blockedUntil > now) {
+      const minsLeft = Math.ceil((state.blockedUntil - now) / 60000);
+      throw new HttpException(
+        {
+          error: 'RATE_LIMIT_EXCEEDED',
+          message: `Доступ заблокирован из-за превышения попыток. Повторите попытку через ${minsLeft} мин.`,
+          blockedUntil: state.blockedUntil,
+          remainingMinutes: minsLeft,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Check code validity
+    if (!state || !state.code || !state.expiresAt || now > state.expiresAt) {
+      throw new BadRequestException(
+        'Код подтверждения истек или не был запрошен. Запросите код заново.',
+      );
+    }
+
+    // Check equality
+    if (state.code !== cleanCode) {
+      state.verifyFailedAttempts = (state.verifyFailedAttempts || 0) + 1;
+      if (state.verifyFailedAttempts >= 3) {
+        state.blockedUntil = now + 30 * 60 * 1000;
+        state.code = undefined;
+        throw new HttpException(
+          {
+            error: 'RATE_LIMIT_EXCEEDED',
+            message: 'Неверный код 3 раза подряд. Доступ заблокирован на 30 минут.',
+            blockedUntil: state.blockedUntil,
+            remainingMinutes: 30,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      throw new BadRequestException(
+        `Неверный код подтверждения. Осталось попыток: ${3 - state.verifyFailedAttempts}`,
+      );
+    }
+
+    // Correct code! Clear verification entry
+    const savedChatId = state.chatId;
+    this.tgVerificationMap.delete(cleanUsername);
+
+    const tgIdStr = savedChatId || `tg_${cleanUsername}`;
+    const email = `tg_${cleanUsername}@telegram.calofit.com`;
+    const isAdmin = cleanUsername === 'yeb0n';
+
+    // Find or create user
+    let user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { telegramUsername: { equals: cleanUsername, mode: 'insensitive' } },
+          { telegramId: tgIdStr },
+          { email: { equals: email, mode: 'insensitive' } },
+        ],
+      },
+    });
+
+    if (!user) {
+      const securePass = crypto.randomBytes(32).toString('hex');
+      const passwordHash = await argon2.hash(securePass);
+      const trialEndsAt = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000);
+
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            email: email.toLowerCase(),
+            passwordHash,
+            role: isAdmin ? 'ADMIN' : 'USER',
+            telegramId: tgIdStr,
+            telegramUsername: cleanUsername,
+            telegramChatId: tgIdStr,
+            trialEndsAt,
+            isEmailVerified: true,
+            isSubscriptionActive: true,
+          },
+        });
+      } catch {
+        user = await this.prisma.user.findFirst({
+          where: {
+            OR: [
+              { email: email.toLowerCase() },
+              { telegramUsername: cleanUsername },
+            ],
+          },
+        });
+      }
+    } else {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          telegramId: tgIdStr,
+          telegramUsername: cleanUsername,
+          telegramChatId: tgIdStr,
+          role: isAdmin ? 'ADMIN' : user.role,
+        },
+      });
+    }
+
+    if (!user) {
+      throw new BadRequestException('Не удалось выполнить вход в аккаунт.');
+    }
+
+    const profileExists = await this.prisma.profile.findUnique({
+      where: { userId: user.id },
+      select: { id: true, name: true },
+    });
+
+    const tokens = await this.generateAndSaveTokens(user.id);
+    const subInfo = this.computeSubscriptionInfo(user);
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        telegramId: user.telegramId,
+        telegramUsername: user.telegramUsername,
+        name: profileExists?.name || cleanUsername,
         hasProfile: !!profileExists,
         ...subInfo,
       },

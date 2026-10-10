@@ -9,7 +9,19 @@
     "signing_in": "Вход...",
     "signing_up": "Регистрация...",
     "error_login": "Неверный email или пароль",
-    "error_register": "Ошибка при регистрации"
+    "error_register": "Ошибка при регистрации",
+    "tg_login_btn": "Войти через Telegram",
+    "tg_modal_title": "Вход через Telegram",
+    "tg_step1_desc": "Введите ваш @username в Telegram, и бот отправит вам секретный код для входа:",
+    "tg_username_placeholder": "@username (например @yeb0n)",
+    "tg_send_code_btn": "Получить код в Telegram",
+    "tg_step2_title": "Введите код из Telegram",
+    "tg_step2_desc": "Бот отправил 6-значный код пользователю",
+    "tg_code_placeholder": "6-значный код (например 123456)",
+    "tg_verify_btn": "Подтвердить и войти",
+    "tg_resend_code": "Отправить код повторно",
+    "tg_change_username": "Сменить username",
+    "tg_rate_limit_notice": "Лимит: максимум 3 попытки, затем блокировка на 30 мин."
   },
   "dashboard": {
     "title": "Сегодняшний анализ",
