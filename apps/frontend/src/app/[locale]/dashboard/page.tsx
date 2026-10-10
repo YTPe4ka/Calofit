@@ -85,8 +85,19 @@ export default function DashboardPage({ params }: { params: { locale: string } }
       return data;
     },
     enabled: !authLoading && (!!user || (typeof window !== 'undefined' && !!localStorage.getItem('accessToken'))),
-    retry: 2,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
   });
+
+  // Redirect to login if user is not authenticated and auth check finished
+  useEffect(() => {
+    if (!authLoading && typeof window !== 'undefined') {
+      const token = localStorage.getItem('accessToken');
+      if (!user && !token) {
+        window.location.href = `/${locale}/login`;
+      }
+    }
+  }, [authLoading, user, locale]);
 
   // Handle unauthorized / token expiration cleanly (only after auth is ready)
   useEffect(() => {
@@ -157,14 +168,21 @@ export default function DashboardPage({ params }: { params: { locale: string } }
     },
   });
 
-  if (isLoading) {
+  // 1. Initial loading state (auth initializing, query pending, or waiting for data without error)
+  if (authLoading || isLoading || (!data && !error)) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-white to-emerald-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs text-gray-400 font-medium animate-pulse">
+            {locale === 'ru' ? 'Загрузка CaloFit...' : locale === 'en' ? 'Loading CaloFit...' : 'Yuklanmoqda...'}
+          </span>
+        </div>
       </main>
     );
   }
 
+  // 2. Real error state after retries failed
   if (error || !data) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-green-50 via-white to-emerald-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 space-y-4">
