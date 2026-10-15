@@ -113,5 +113,23 @@
     "sending": "Sending...",
     "success": "Your message was successfully sent! Thank you.",
     "error": "Failed to send message"
+  },
+  "chat": {
+    "title": "AI Dietician",
+    "attach_meal": "Attach meal",
+    "modal_title": "Select a meal to discuss",
+    "modal_desc": "Pick a dish from today's log or enter any food manually so the dietician can analyze its benefits and fit for your goals.",
+    "today_meals": "Today's Meals",
+    "no_meals_today": "No meals logged today yet",
+    "custom_meal_title": "Or enter any food manually",
+    "custom_meal_placeholder": "e.g. Chicken Shawarma or Ramen...",
+    "select_btn": "Select",
+    "attached_label": "Discussing meal:",
+    "detach_btn": "Detach",
+    "ask_prefix": "Ask:",
+    "quick_q1": "🥗 Is it healthy?",
+    "quick_q2": "🌙 Can I eat at night?",
+    "quick_q3": "📉 How to fit in weight loss?",
+    "quick_q4": "💡 Healthy alternative?"
   }
 }

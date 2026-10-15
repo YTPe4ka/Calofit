@@ -149,6 +149,38 @@ export default function AnalyzePage() {
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  const handleOpenFullChat = () => {
+    const dishName = editValues.foodName || result?.nutrition.foodName || 'Блюдо';
+    const cals = editValues.calories || result?.nutrition.calories || 0;
+    const prot = editValues.protein || result?.nutrition.protein || 0;
+    const fats = editValues.fat || result?.nutrition.fat || 0;
+    const carb = editValues.carbs || result?.nutrition.carbs || 0;
+    const portion = editValues.portionSize || result?.nutrition.portionSize || 'стандартная';
+    const ingredients = result?.nutrition.ingredients || [];
+
+    const mealContext = `Блюдо: ${dishName}, порция: ${portion}, калории: ${cals} ккал, белки: ${prot}г, жиры: ${fats}г, углеводы: ${carb}г${ingredients.length ? `, ингредиенты: ${ingredients.join(', ')}` : ''}.`;
+
+    const chatTransfer = {
+      question: aiQuestion || '',
+      answer: aiAnswer || '',
+      meal: {
+        foodName: dishName,
+        calories: Number(cals),
+        protein: Number(prot),
+        fat: Number(fats),
+        carbs: Number(carb),
+        portionSize: portion,
+        mealContext,
+      },
+    };
+
+    try {
+      sessionStorage.setItem('calofit_chat_transfer', JSON.stringify(chatTransfer));
+    } catch {}
+
+    router.push('/chat');
+  };
+
   // ─── Analyze Mutation ──────────────────────────────
   const analyzeMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -652,8 +684,8 @@ export default function AnalyzePage() {
                     <div className="pt-2 border-t border-gray-100 dark:border-slate-800/80 flex justify-end">
                       <button
                         type="button"
-                        onClick={() => router.push('/chat')}
-                        className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 flex items-center gap-1.5 transition-colors"
+                        onClick={handleOpenFullChat}
+                        className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <MessageSquare size={13} />
                         <span>{t('ask_ai_open_full_chat')}</span>

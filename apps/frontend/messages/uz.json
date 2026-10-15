@@ -113,5 +113,23 @@
     "sending": "Yuborilmoqda...",
     "success": "Xabaringiz muvaffaqiyatli yuborildi! Rahmat.",
     "error": "Xabarni yuborishda xatolik yuz berdi"
+  },
+  "chat": {
+    "title": "AI Dietolog",
+    "attach_meal": "Taomni belgilash",
+    "modal_title": "Muhokama qilish uchun taomni tanlang",
+    "modal_desc": "Bugungi kundalikdan taomni tanlang yoki xohlagan taom nomini kiriting, dietolog uning foydasi va maqsadingizga ta'sirini tahlil qiladi.",
+    "today_meals": "Bugungi taomlar",
+    "no_meals_today": "Bugun hali saqlangan taomlar mavjud emas",
+    "custom_meal_title": "Yoki istalgan taom nomini qo'lda kiriting",
+    "custom_meal_placeholder": "Masalan: Tovuqli lavash yoki Ramen...",
+    "select_btn": "Tanlash",
+    "attached_label": "Muhokama qilinayotgan taom:",
+    "detach_btn": "Ajratish",
+    "ask_prefix": "So'rash:",
+    "quick_q1": "🥗 Foydalimi?",
+    "quick_q2": "🌙 Kechqurun yesa bo'ladimi?",
+    "quick_q3": "📉 Ozishga mos keladimi?",
+    "quick_q4": "💡 Nima bilan almashtirish yaxshi?"
   }
 }
